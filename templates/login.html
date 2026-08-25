@@ -20,6 +20,11 @@
                 {% if error %}
                 <div class="msg-error" role="alert">⚠️ {{ error }}</div>
                 {% endif %}
+                {% if deleted %}
+                <div class="msg-ok" role="status">
+                    ✅ Your account has been deleted.
+                </div>
+                {% endif %}
                 <form method="POST" action="/login">
                     <div class="form-group">
                         <label for="login-username">Username</label>

@@ -84,6 +84,38 @@ CREATE INDEX IF NOT EXISTS idx_forum_replies_thread
 
 CREATE INDEX IF NOT EXISTS idx_messages_chat
     ON messages (chat_type, chat_id, timestamp);
+
+CREATE TABLE IF NOT EXISTS friendships (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    requester TEXT NOT NULL,
+    addressee TEXT NOT NULL,
+    status    TEXT NOT NULL CHECK (status IN ('pending', 'accepted')),
+    timestamp INTEGER NOT NULL,
+    UNIQUE (requester, addressee)
+);
+
+CREATE INDEX IF NOT EXISTS idx_friendships_user
+    ON friendships (requester, addressee, status);
+
+CREATE TABLE IF NOT EXISTS bans (
+    username  TEXT PRIMARY KEY,
+    reason    TEXT,
+    timestamp INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    username  TEXT NOT NULL,
+    ntype     TEXT NOT NULL,
+    actor     TEXT,
+    text      TEXT NOT NULL DEFAULT '',
+    link      TEXT NOT NULL DEFAULT '',
+    read      INTEGER NOT NULL DEFAULT 0,
+    timestamp INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user
+    ON notifications (username, read, timestamp);
 """
 
 
@@ -536,6 +568,317 @@ class Database:
                 "DELETE FROM forum_threads WHERE id = ?", (thread_id,)
             )
         return [r["image"] for r in rows if r["image"]]
+
+    # ------------------------------------------------------------------
+    # FRIENDS
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _friend_row(row):
+        return {
+            "id": row["id"],
+            "requester": row["requester"],
+            "addressee": row["addressee"],
+            "status": row["status"],
+            "timestamp": row["timestamp"],
+        }
+
+    def friendship_status(self, a, b):
+        """'self' | 'none' | 'friends' | 'pending_out' | 'pending_in'."""
+        if a == b:
+            return "self"
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM friendships"
+                " WHERE (requester = ? AND addressee = ?)"
+                " OR (requester = ? AND addressee = ?)",
+                (a, b, b, a),
+            ).fetchone()
+        if row is None:
+            return "none"
+        if row["status"] == "accepted":
+            return "friends"
+        # pending: who asked?
+        return "pending_out" if row["requester"] == a else "pending_in"
+
+    def send_friend_request(self, requester, addressee):
+        """Returns final status: 'pending_out', 'friends' (auto-accept of a
+        reverse request), or raises ValueError on invalid state."""
+        status = self.friendship_status(requester, addressee)
+        if addressee == requester:
+            raise ValueError("You cannot befriend yourself.")
+        if status == "friends":
+            raise ValueError("You are already friends.")
+        if status == "pending_out":
+            raise ValueError("Request already sent.")
+        now = int(time.time() * 1000)
+        with self._lock:
+            if status == "pending_in":
+                # Mutual add: accept their existing request.
+                self._conn.execute(
+                    "UPDATE friendships SET status = 'accepted',"
+                    " timestamp = ? WHERE requester = ? AND addressee = ?",
+                    (now, addressee, requester),
+                )
+                return "friends"
+            self._conn.execute(
+                "INSERT INTO friendships (requester, addressee, status,"
+                " timestamp) VALUES (?, ?, 'pending', ?)",
+                (requester, addressee, now),
+            )
+        return "pending_out"
+
+    def get_friend_request(self, req_id):
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM friendships WHERE id = ?", (req_id,)
+            ).fetchone()
+        return None if row is None else self._friend_row(row)
+
+    def accept_friend_request(self, req_id):
+        with self._lock:
+            self._conn.execute(
+                "UPDATE friendships SET status = 'accepted',"
+                " timestamp = ? WHERE id = ?",
+                (int(time.time() * 1000), req_id),
+            )
+
+    def decline_friend_request(self, req_id):
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM friendships WHERE id = ?", (req_id,)
+            )
+
+    def list_friends(self, username):
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT CASE WHEN requester = ? THEN addressee"
+                " ELSE requester END AS friend FROM friendships"
+                " WHERE status = 'accepted'"
+                " AND (requester = ? OR addressee = ?)"
+                " ORDER BY friend COLLATE NOCASE",
+                (username, username, username),
+            ).fetchall()
+        return [r["friend"] for r in rows]
+
+    def list_pending_incoming(self, username):
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM friendships WHERE addressee = ?"
+                " AND status = 'pending' ORDER BY timestamp DESC",
+                (username,),
+            ).fetchall()
+        return [self._friend_row(r) for r in rows]
+
+    def list_pending_outgoing(self, username):
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM friendships WHERE requester = ?"
+                " AND status = 'pending' ORDER BY timestamp DESC",
+                (username,),
+            ).fetchall()
+        return [self._friend_row(r) for r in rows]
+
+    def remove_friend(self, a, b):
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM friendships WHERE status = 'accepted'"
+                " AND ((requester = ? AND addressee = ?)"
+                " OR (requester = ? AND addressee = ?))",
+                (a, b, b, a),
+            )
+
+    def delete_user_friendships(self, username):
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM friendships WHERE requester = ?"
+                " OR addressee = ?",
+                (username, username),
+            )
+
+    # ------------------------------------------------------------------
+    # BANS
+    # ------------------------------------------------------------------
+
+    def ban_user(self, username, reason=""):
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO bans (username, reason, timestamp)"
+                " VALUES (?, ?, ?)"
+                " ON CONFLICT(username) DO UPDATE SET reason = excluded.reason,"
+                " timestamp = excluded.timestamp",
+                (username, reason, int(time.time() * 1000)),
+            )
+
+    def unban_user(self, username):
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM bans WHERE username = ?", (username,)
+            )
+
+    def is_banned(self, username):
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT 1 FROM bans WHERE username = ?", (username,)
+            ).fetchone()
+        return row is not None
+
+    def all_bans(self):
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT username FROM bans"
+            ).fetchall()
+        return {r["username"] for r in rows}
+
+    # ------------------------------------------------------------------
+    # NOTIFICATIONS
+    # ------------------------------------------------------------------
+
+    def add_notification(self, username, ntype, actor, text, link):
+        """Inserts one notification and returns its id."""
+        with self._lock:
+            cur = self._conn.execute(
+                "INSERT INTO notifications (username, ntype, actor, text,"
+                " link, read, timestamp) VALUES (?, ?, ?, ?, ?, 0, ?)",
+                (username, ntype, actor, text, link,
+                 int(time.time() * 1000)),
+            )
+            return cur.lastrowid
+
+    def get_notification(self, notif_id):
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM notifications WHERE id = ?", (notif_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_notifications(self, username, limit=30):
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM notifications WHERE username = ?"
+                " ORDER BY timestamp DESC, id DESC LIMIT ?",
+                (username, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def unread_notification_count(self, username):
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS n FROM notifications"
+                " WHERE username = ? AND read = 0",
+                (username,),
+            ).fetchone()
+        return row["n"]
+
+    def mark_notifications_read(self, username, notif_id=None, link=None):
+        """Mark all / one / everything matching a link-prefix as read."""
+        with self._lock:
+            if notif_id is not None:
+                self._conn.execute(
+                    "UPDATE notifications SET read = 1"
+                    " WHERE username = ? AND id = ?",
+                    (username, notif_id),
+                )
+            elif link is not None:
+                self._conn.execute(
+                    "UPDATE notifications SET read = 1"
+                    " WHERE username = ? AND read = 0 AND link LIKE ?",
+                    (username, link + "%"),
+                )
+            else:
+                self._conn.execute(
+                    "UPDATE notifications SET read = 1"
+                    " WHERE username = ? AND read = 0",
+                    (username,),
+                )
+
+    def delete_user_notifications(self, username):
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM notifications WHERE username = ?", (username,)
+            )
+
+    # ------------------------------------------------------------------
+    # ACCOUNT ADMIN
+    # ------------------------------------------------------------------
+
+    def change_password(self, username, password_hash):
+        with self._lock:
+            self._conn.execute(
+                "UPDATE users SET password_hash = ? WHERE username = ?",
+                (password_hash, username),
+            )
+
+    def delete_user_account(self, username):
+        """
+        Removes the account plus everything owned by it EXCEPT chat
+        messages (they stay visible like on Telegram). Returns the avatar
+        filename to unlink.
+        Returns also list of forum image files and deleted groups info.
+        """
+        avatar = None
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT avatar FROM users WHERE username = ?", (username,)
+            ).fetchone()
+            if row:
+                avatar = row["avatar"]
+
+            # Groups they created are removed entirely (incl. messages);
+            # attachment filenames are returned for caller-side unlinking.
+            created_group_ids = [
+                r["id"]
+                for r in self._conn.execute(
+                    "SELECT id FROM groups WHERE creator = ?", (username,)
+                ).fetchall()
+            ]
+            group_files = []
+            for gid in created_group_ids:
+                group_files.extend(self.delete_chat_messages("group", gid))
+                self._conn.execute(
+                    "DELETE FROM group_members WHERE group_id = ?", (gid,)
+                )
+            self._conn.execute(
+                "DELETE FROM groups WHERE creator = ?", (username,)
+            )
+
+            # Forum images owned by the user
+            forum_files = [
+                r["image"]
+                for r in self._conn.execute(
+                    "SELECT image FROM forum_threads WHERE author = ?"
+                    " UNION ALL"
+                    " SELECT image FROM forum_replies WHERE author = ?",
+                    (username, username),
+                ).fetchall()
+                if r["image"]
+            ]
+            self._conn.execute(
+                "DELETE FROM forum_replies WHERE author = ?", (username,)
+            )
+            self._conn.execute(
+                "DELETE FROM forum_threads WHERE author = ?", (username,)
+            )
+
+            self.delete_user_friendships(username)
+            self.delete_user_notifications(username)
+
+            self._conn.execute(
+                "DELETE FROM group_members WHERE username = ?", (username,)
+            )
+            self._conn.execute(
+                "DELETE FROM bans WHERE username = ?", (username,)
+            )
+            self._conn.execute(
+                "DELETE FROM users WHERE username = ?", (username,)
+            )
+
+        return {
+            "avatar": avatar,
+            "forum_images": forum_files,
+            "group_images": group_files,
+            "deleted_group_ids": created_group_ids,
+        }
 
     # ------------------------------------------------------------------
     # LEGACY JSON MIGRATION

@@ -42,6 +42,9 @@
                 </div>
                 <nav class="sidebar-nav">
                     <a href="/chat" class="nav-item">🌍 Global Chat</a>
+                    <a href="/friends" class="nav-item">
+                        🫂 Friends</a
+                    >
                     <a href="/users" class="nav-item active">👥 Users</a>
                     <a href="/groups" class="nav-item">🏡 Groups</a>
                     <button id="themeToggle" class="nav-item">
@@ -88,6 +91,12 @@
 
                         <h2 class="profile-display-name">
                             {{ profile.get('display_name', username) }}
+                            {% if target_is_mod %}<span class="mod-badge"
+                                >👮 MOD</span
+                            >{% endif %}
+                            {% if target_banned %}
+                            <span class="banned-badge">🚫 BANNED</span>
+                            {% endif %}
                         </h2>
                         <p class="username">@{{ username }}</p>
 
@@ -97,6 +106,27 @@
 
                         <div class="profile-actions">
                             {% if user and username != user %}
+                            {% if friend_status == 'none' %}
+                            <form
+                                method="POST"
+                                action="/friends/request/{{ username }}"
+                            >
+                                <button type="submit" class="dm-btn">
+                                    ➕ Add Friend</button>
+                            </form>
+                            {% elif friend_status == 'pending_out' %}
+                            <span class="pill">⏳ Request sent</span>
+                            {% elif friend_status == 'pending_in' %}
+                            <form
+                                method="POST"
+                                action="/friends/request/{{ username }}"
+                            >
+                                <button type="submit" class="dm-btn">
+                                    ✔ Accept Friend</button>
+                            </form>
+                            {% elif friend_status == 'friends' %}
+                            <span class="pill">✅ Friends</span>
+                            {% endif %}
                             <a href="/dm/{{ username }}" class="dm-btn"
                                 >💬 Message</a
                             >
@@ -113,6 +143,62 @@
                                 >← Back to Users</a
                             >
                         </div>
+
+                        {% if is_mod and not target_is_mod and username != user
+                        %}
+                        <div class="mod-panel">
+                            <h3>👮 Moderator tools</h3>
+                            <div class="profile-actions">
+                                {% if target_banned %}
+                                <form
+                                    method="POST"
+                                    action="/mod/unban/{{ username }}"
+                                >
+                                    <input
+                                        type="hidden"
+                                        name="next"
+                                        value="/user/{{ username }}"
+                                    />
+                                    <button type="submit" class="mini-btn">
+                                        ♻️ Unban</button>
+                                </form>
+                                {% else %}
+                                <form
+                                    method="POST"
+                                    action="/mod/ban/{{ username }}"
+                                    onsubmit="return confirm('Ban @{{ username }}?')"
+                                >
+                                    <input
+                                        type="hidden"
+                                        name="next"
+                                        value="/user/{{ username }}"
+                                    />
+                                    <button
+                                        type="submit"
+                                        class="mini-btn danger-text"
+                                    >
+                                        🚫 Ban</button>
+                                </form>
+                                {% endif %}
+                                <form
+                                    method="POST"
+                                    action="/mod/delete_user/{{ username }}"
+                                    onsubmit="return confirm('Permanently DELETE @{{ username }}\\'s account? This cannot be undone.')"
+                                >
+                                    <input
+                                        type="hidden"
+                                        name="next"
+                                        value="/users"
+                                    />
+                                    <button
+                                        type="submit"
+                                        class="mini-btn danger-text"
+                                    >
+                                        🗑️ Delete Account</button>
+                                </form>
+                            </div>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </main>

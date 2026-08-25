@@ -39,6 +39,9 @@
                 </div>
                 <nav class="sidebar-nav">
                     <a href="/chat" class="nav-item">🌍 Global Chat</a>
+                    <a href="/friends" class="nav-item">
+                        🫂 Friends</a
+                    >
                     <a href="/users" class="nav-item">👥 Users</a>
                     <a href="/groups" class="nav-item">🏡 Groups</a>
                     <button id="themeToggle" class="nav-item">
@@ -115,9 +118,92 @@
                                 >
                             </div>
                             <button type="submit" class="save-btn">
-                                Save Changes
+                                💾 Save Changes
                             </button>
-                            <a href="/chat" class="back-btn">Back to Chat</a>
+                            <a href="/chat" class="back-btn">⬅ Back to Chat</a>
+                        </form>
+
+                        {% if pw_error %}
+                        <div class="msg-error" role="alert">
+                            ⚠️ {{ pw_error }}
+                        </div>
+                        {% endif %}
+                        {% if pw_ok %}
+                        <div class="msg-ok" role="status">✅ {{ pw_ok }}</div>
+                        {% endif %}
+
+                        {# ---------- Change password ---------- #}
+                        <form
+                            method="POST"
+                            action="/profile/password"
+                            class="account-form"
+                        >
+                            <fieldset>
+                                <legend>🔑 Change Password</legend>
+                                <div class="form-group">
+                                    <label for="pw-current"
+                                        >Current password</label
+                                    >
+                                    <input
+                                        type="password"
+                                        id="pw-current"
+                                        name="current_password"
+                                        required
+                                        autocomplete="current-password"
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <label for="pw-new">New password</label>
+                                    <input
+                                        type="password"
+                                        id="pw-new"
+                                        name="new_password"
+                                        required
+                                        minlength="4"
+                                        autocomplete="new-password"
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <label for="pw-confirm"
+                                        >Confirm new password</label
+                                    >
+                                    <input
+                                        type="password"
+                                        id="pw-confirm"
+                                        name="confirm_password"
+                                        required
+                                        minlength="4"
+                                        autocomplete="new-password"
+                                    />
+                                </div>
+                                <button type="submit" class="save-btn">
+                                    🔑 Update Password
+                                </button>
+                            </fieldset>
+                        </form>
+
+                        {# ---------- Delete account ---------- #}
+                        <form
+                            method="POST"
+                            action="/profile/delete"
+                            class="account-form"
+                            onsubmit="return confirm('Really delete your account? Your profile, friends, groups and forum posts will be removed permanently. Chat messages stay.')"
+                        >
+                            <fieldset>
+                                <legend>⚠️ Danger zone</legend>
+                                <p class="file-hint">
+                                    Deleting your account removes your
+                                    profile, friendships, groups you created
+                                    and your forum posts. This cannot be
+                                    undone.
+                                </p>
+                                <button
+                                    type="submit"
+                                    class="save-btn danger-btn"
+                                >
+                                    🗑️ Delete My Account
+                                </button>
+                            </fieldset>
                         </form>
                     </div>
                 </div>

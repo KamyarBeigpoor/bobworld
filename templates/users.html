@@ -41,6 +41,9 @@
                 </div>
                 <nav class="sidebar-nav">
                     <a href="/chat" class="nav-item">🌍 Global Chat</a>
+                    <a href="/friends" class="nav-item">
+                        🫂 Friends</a
+                    >
                     <a href="/users" class="nav-item active">👥 Users</a>
                     <a href="/groups" class="nav-item">🏡 Groups</a>
                     <button id="themeToggle" class="nav-item">
@@ -82,20 +85,108 @@
                             {% endif %}
                         </div>
                         <div class="user-info">
-                            <div class="user-name">{{ u.display_name }}</div>
+                            <div class="user-name">
+                                {{ u.display_name }}
+                                {% if u.is_mod %}<span class="mod-badge"
+                                    >👮 MOD</span
+                                >{% endif %}
+                                {% if u.username in banned_set %}
+                                <span class="banned-badge">🚫 BANNED</span>
+                                {% endif %}
+                            </div>
                             <div class="user-username">@{{ u.username }}</div>
                             <div class="user-bio">{{ u.bio[:60] }}</div>
                             <div class="user-actions">
-                                <a href="/dm/{{ u.username }}" class="dm-btn">
-                                    Message</a
+                                {% if u.friend_status == 'none' %}
+                                <form
+                                    method="POST"
+                                    action="/friends/request/{{ u.username }}"
+                                >
+                                    <button type="submit" class="mini-btn">
+                                        ➕ Add Friend
+                                    </button>
+                                </form>
+                                {% elif u.friend_status == 'pending_out' %}
+                                <span class="pill">⏳ Requested</span>
+                                {% elif u.friend_status == 'pending_in' %}
+                                <form
+                                    method="POST"
+                                    action="/friends/request/{{ u.username }}"
+                                >
+                                    <button type="submit" class="mini-btn">
+                                        ✔ Accept Friend
+                                    </button>
+                                </form>
+                                {% elif u.friend_status == 'friends' %}
+                                <span class="pill">✅ Friends</span>
+                                {% endif %}
+                                <a
+                                    href="/dm/{{ u.username }}"
+                                    class="dm-btn"
+                                >
+                                    💬 Message</a
                                 >
                                 <a
                                     href="/user/{{ u.username }}"
                                     class="view-profile-btn"
                                 >
-                                    Profile</a
+                                    👤 Profile</a
                                 >
                             </div>
+                            {% if is_mod and not u.is_mod %}
+                            <div class="user-actions mod-actions">
+                                {% if u.username in banned_set %}
+                                <form
+                                    method="POST"
+                                    action="/mod/unban/{{ u.username }}"
+                                >
+                                    <input
+                                        type="hidden"
+                                        name="next"
+                                        value="/users"
+                                    />
+                                    <button type="submit" class="mini-btn">
+                                        ♻️ Unban
+                                    </button>
+                                </form>
+                                {% else %}
+                                <form
+                                    method="POST"
+                                    action="/mod/ban/{{ u.username }}"
+                                    onsubmit="return confirm('Ban @{{ u.username }}? They will be logged out and unable to log in.')"
+                                >
+                                    <input
+                                        type="hidden"
+                                        name="next"
+                                        value="/users"
+                                    />
+                                    <button
+                                        type="submit"
+                                        class="mini-btn danger-text"
+                                    >
+                                        🚫 Ban
+                                    </button>
+                                </form>
+                                {% endif %}
+                                <form
+                                    method="POST"
+                                    action="/mod/delete_user/{{ u.username }}"
+                                    onsubmit="return confirm('Permanently DELETE @{{ u.username }}\\'s account, their groups and forum posts? This cannot be undone.')"
+                                >
+                                    <input
+                                        type="hidden"
+                                        name="next"
+                                        value="/users"
+                                    />
+                                    <button
+                                        type="submit"
+                                        class="mini-btn danger-text"
+                                    >
+                                        🗑️ Delete Account
+                                    </button>
+                                </form>
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
                     {% else %}

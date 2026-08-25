@@ -8,6 +8,7 @@
   if (typeof window.GROUP_ID !== "undefined") GROUP_ID = window.GROUP_ID;
 
   let eventSource = null;
+  let notifySource = null;
   let messagesContainer, messageForm, messageInput, fileInput, sendBtn;
   let currentUser = "",
     currentDisplay = "",
@@ -15,6 +16,7 @@
   let reconnectAttempts = 0;
   const MAX_RECONNECT_DELAY = 15000;
   let hamburgerBtn, sidebar, overlay, themeToggle;
+  let unreadNotifs = 0;
 
   // Reply state
   let activeReply = null;
@@ -57,6 +59,7 @@
     initSidebar();
     initContextMenu();
     initReplyPreview();
+    initNotifications();
 
     if (isChatPage) {
       // Wait for video player script to be available
@@ -773,6 +776,228 @@
     }
   }
 
+  // ========== NOTIFICATIONS ==========
+  function $(id) {
+    return document.getElementById(id);
+  }
+
+  function updateNotifBadge() {
+    const badge = $("notifBadge");
+    if (!badge) return;
+    if (unreadNotifs > 0) {
+      badge.textContent = unreadNotifs > 99 ? "99+" : unreadNotifs;
+      badge.hidden = false;
+    } else {
+      badge.hidden = true;
+    }
+    document.title =
+      (unreadNotifs > 0 ? `(${unreadNotifs}) ` : "") +
+      document.title.replace(/^\(\d+\+\?\)\s*/, "");
+  }
+
+  function notifItemHtml(n) {
+    const icons = {
+      friend_request: "🫂",
+      friend_accepted: "✅",
+      dm: "💬",
+      group: "🏡",
+    };
+    const icon = icons[n.ntype] || "🔔";
+    const when = n.timestamp ? formatTime(n.timestamp) : "";
+    const cls = n.read ? "notif-item" : "notif-item unread";
+    return (
+      `<button type="button" class="${cls}" data-id="${n.id}" data-link="${escapeAttr(
+        n.link,
+      )}">` +
+      `${icon} ${escapeHtml(n.text)} <span class="time">${when}</span></button>`
+    );
+  }
+
+  function escapeAttr(s) {
+    return String(s || "").replace(/"/g, "&quot;");
+  }
+
+  function renderNotifList(items) {
+    const list = $("notifList");
+    if (!list) return;
+    list.innerHTML = items.length
+      ? items.map(notifItemHtml).join("")
+      : '<div class="notif-empty">Nothing here yet 🎉</div>';
+
+    list.querySelectorAll(".notif-item").forEach((el) => {
+      el.addEventListener("click", async () => {
+        const id = el.dataset.id;
+        const link = el.dataset.link;
+        try {
+          await fetch("/notifications/read", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: Number(id) }),
+          });
+        } catch (e) {
+          /* ignore */
+        }
+        if (el.classList.contains("unread") && unreadNotifs > 0) {
+          unreadNotifs--;
+          updateNotifBadge();
+        }
+        if (link) window.location.href = link;
+      });
+    });
+  }
+
+  function browserNotify(text) {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "granted" && document.hidden) {
+      try {
+        new Notification("bobworld", { body: text, tag: "bobworld-" + Date.now() });
+      } catch (e) {
+        /* some browsers require SW — ignore */
+      }
+    }
+  }
+
+  // Browsers only allow requesting permission from a user gesture.
+  function armPermissionRequest() {
+    const once = () => {
+      if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {});
+      }
+      document.removeEventListener("pointerdown", once);
+    };
+    document.addEventListener("pointerdown", once);
+  }
+
+  function handleNotificationEvent(data) {
+    if (data.type === "banned") {
+      alert("Your account has been banned.");
+      window.location.href = "/login?banned=1";
+      return;
+    }
+    if (data.type === "account_deleted") {
+      alert("This account has been deleted.");
+      window.location.href = "/login?deleted=1";
+      return;
+    }
+    if (data.type !== "notification") return;
+
+    unreadNotifs++;
+    updateNotifBadge();
+
+    const list = $("notifList");
+    if (list) {
+      const empty = list.querySelector(".notif-empty");
+      if (empty) empty.remove();
+      list.insertAdjacentHTML("afterbegin", notifItemHtml({ ...data, read: 0 }));
+      bindNotifItem(list.firstElementChild);
+    }
+
+    // Outside-the-tab notification while the page is in a background tab.
+    browserNotify(data.text || "New notification");
+  }
+
+  function bindNotifItem(el) {
+    if (!el) return;
+    el.addEventListener("click", async () => {
+      const id = el.dataset.id;
+      const link = el.dataset.link;
+      try {
+        await fetch("/notifications/read", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: Number(id) }),
+        });
+      } catch (e) {
+        /* ignore */
+      }
+      if (el.classList.contains("unread") && unreadNotifs > 0) {
+        unreadNotifs--;
+        updateNotifBadge();
+      }
+      if (link) window.location.href = link;
+    });
+  }
+
+  function initNotifications() {
+    const bell = $("notifBell");
+    if (!bell || !window.CURRENT_USER_DATA || !CURRENT_USER_DATA.username)
+      return;
+
+    armPermissionRequest();
+
+    // Initial load (badge + panel contents)
+    fetch("/notifications")
+      .then((r) => r.json())
+      .then((data) => {
+        unreadNotifs = data.unread || 0;
+        updateNotifBadge();
+        renderNotifList(data.items || []);
+      })
+      .catch(() => {});
+
+    bell.addEventListener("click", () => {
+      const panel = $("notifPanel");
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden && unreadNotifs > 0) {
+        fetch("/notifications/read", { method: "POST" })
+          .then(() => {
+            unreadNotifs = 0;
+            updateNotifBadge();
+            document
+              .querySelectorAll(".notif-item.unread")
+              .forEach((el) => el.classList.remove("unread"));
+          })
+          .catch(() => {});
+      }
+    });
+
+    const clearBtn = $("notifClear");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", () => {
+        fetch("/notifications/read", { method: "POST" }).catch(() => {});
+        unreadNotifs = 0;
+        updateNotifBadge();
+        document
+          .querySelectorAll(".notif-item.unread")
+          .forEach((el) => el.classList.remove("unread"));
+      });
+    }
+
+    document.addEventListener("click", (e) => {
+      const wrap = document.querySelector(".notif-wrap");
+      if (wrap && !wrap.contains(e.target)) {
+        const panel = $("notifPanel");
+        if (panel) panel.hidden = true;
+      }
+    });
+
+    // Live stream
+    let attempts = 0;
+    const connect = () => {
+      notifySource = new EventSource("/stream/notify");
+      notifySource.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.type === "heartbeat" || data.type === "connected") return;
+          handleNotificationEvent(data);
+          attempts = 0;
+        } catch (err) {
+          /* ignore */
+        }
+      };
+      notifySource.onerror = () => {
+        if (notifySource.readyState === EventSource.CLOSED) {
+          const delay = Math.min(
+            1000 * Math.pow(2, ++attempts),
+            MAX_RECONNECT_DELAY,
+          );
+          setTimeout(connect, delay);
+        }
+      };
+    };
+    connect();
+  }
+
   // ========== SIDEBAR & THEME ==========
   function initSidebar() {
     hamburgerBtn = document.getElementById("hamburgerBtn");
@@ -866,5 +1091,6 @@
 
   window.addEventListener("beforeunload", () => {
     if (eventSource) eventSource.close();
+    if (notifySource) notifySource.close();
   });
 })();

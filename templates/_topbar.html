@@ -5,8 +5,41 @@
         >💬 Chat</a
     >
     <a
+        href="/friends"
+        class="switch-btn{% if section == 'friends' %} active{% endif %}"
+        >🫂 Friends</a
+    >
+    <a
         href="/forum"
         class="switch-btn{% if section == 'forum' %} active{% endif %}"
         >📋 Forum</a
     >
+    <div class="notif-wrap">
+        <button
+            type="button"
+            id="notifBell"
+            class="notif-bell"
+            title="Notifications"
+            aria-label="Notifications"
+        >
+            🔔<span
+                id="notifBadge"
+                class="notif-badge"
+                hidden
+            ></span>
+        </button>
+        <div id="notifPanel" class="notif-panel" hidden>
+            <div class="notif-head">
+                Notifications
+                <button
+                    type="button"
+                    id="notifClear"
+                    class="post-del"
+                >
+                    mark all read
+                </button>
+            </div>
+            <div id="notifList" class="notif-list"></div>
+        </div>
+    </div>
 </nav>

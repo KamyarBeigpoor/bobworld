@@ -257,6 +257,7 @@ class EventBroker:
         self.global_clients = set()
         self.dm_clients = {}
         self.group_clients = {}
+        self.notify_clients = {}  # username -> set of queues
 
     def subscribe(self, chat_type, chat_id=None):
         q = queue.Queue()
@@ -310,6 +311,47 @@ class EventBroker:
                             chat_id,
                             None
                         )
+
+    def has_subscribers(self, chat_type, chat_id=None):
+        """True when at least one SSE listener is attached to this chat."""
+        with self.lock:
+            if chat_type == "global":
+                return bool(self.global_clients)
+            if chat_type == "dm":
+                return bool(self.dm_clients.get(chat_id))
+            if chat_type == "group":
+                return bool(self.group_clients.get(chat_id))
+        return False
+
+    # ---- per-user notification streams --------------------------------
+
+    def subscribe_notify(self, username):
+        q = queue.Queue()
+
+        with self.lock:
+            self.notify_clients.setdefault(username, set()).add(q)
+
+        return q
+
+    def unsubscribe_notify(self, username, q):
+        with self.lock:
+            clients = self.notify_clients.get(username)
+
+            if clients:
+                clients.discard(q)
+
+                if not clients:
+                    self.notify_clients.pop(username, None)
+
+    def publish_notify(self, username, data):
+        with self.lock:
+            clients = list(self.notify_clients.get(username, ()))
+
+        for client in clients:
+            try:
+                client.put_nowait(data)
+            except Exception:
+                self.unsubscribe_notify(username, client)
 
     def publish(self, chat_type, data, chat_id=None):
 
@@ -463,6 +505,11 @@ def check_active_session():
     if not session.get("user"):
         return redirect("/login")
 
+    # A banned user loses their session on the next request.
+    if db.is_banned(session["user"]):
+        session.clear()
+        return redirect("/login?banned=1")
+
     return None
 
 
@@ -480,6 +527,14 @@ def login():
 
     error = None
 
+    # One-shot status messages arriving via query string.
+    if request.args.get("banned"):
+        error = "This account has been banned."
+    elif request.args.get("deleted"):
+        error = None  # shown as a success/info box below
+
+    deleted = request.args.get("deleted") == "1"
+
     if request.method == "POST":
 
         username = request.form.get("username", "").strip()
@@ -487,7 +542,9 @@ def login():
 
         user = db.get_user_full(username)
 
-        if user and check_password_hash(
+        if user and db.is_banned(username):
+            error = "This account has been banned."
+        elif user and check_password_hash(
             user.get("password_hash", ""),
             password
         ):
@@ -497,11 +554,16 @@ def login():
 
             return redirect("/chat")
 
-        error = "Invalid username or password."
+        elif user is None or not check_password_hash(
+            user.get("password_hash", ""),
+            password
+        ):
+            error = "Invalid username or password."
 
     return render_template(
         "login.html",
         error=error,
+        deleted=deleted,
         username=request.form.get("username", ""),
     )
 
@@ -623,7 +685,9 @@ def profile():
     return render_template(
         "profile.html",
         user=username,
-        profile=user_data
+        profile=user_data,
+        pw_error=request.args.get("err"),
+        pw_ok=request.args.get("ok"),
     )
 
 
@@ -649,6 +713,10 @@ def view_user(username):
         bio=current.get("bio", ""),
         profile=profile,
         username=username,
+        friend_status=db.friendship_status(session["user"], username),
+        is_mod=is_moderator(session["user"]),
+        target_is_mod=is_moderator(username),
+        target_banned=db.is_banned(username),
     )
 
 
@@ -689,6 +757,20 @@ def create_message(sender, text, file):
 
 def publish_message(chat_type, chat_id, message):
     events.publish(chat_type, message, chat_id)
+
+
+def push_notification(username, ntype, actor, text, link):
+    """Store a notification and instantly push it to the recipient if
+    they have an open notification stream."""
+    nid = db.add_notification(username, ntype, actor, text, link)
+    events.publish_notify(username, {
+        "type": "notification",
+        "id": nid,
+        "ntype": ntype,
+        "actor": actor,
+        "text": text,
+        "link": link,
+    })
 
 
 # ============================================================
@@ -774,6 +856,17 @@ def dm(username):
 
         publish_message("dm", key, message)
 
+        # Notify the recipient unless they are watching this conversation.
+        if not events.has_subscribers("dm", key):
+            preview = message.get("text") or "📎 sent an attachment"
+            push_notification(
+                username,
+                "dm",
+                me,
+                preview[:80],
+                f"/dm/{me}",
+            )
+
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify({
                 "status": "ok",
@@ -783,6 +876,9 @@ def dm(username):
         return redirect(f"/dm/{username}")
 
     messages = db.get_messages("dm", key, 200)
+
+    # Opening the conversation clears its notifications.
+    db.mark_notifications_read(me, link=f"/dm/{username}")
 
     all_users = db.all_users()
 
@@ -851,13 +947,16 @@ def delete_message():
     if existing is None:
         return jsonify({"error": "Message not found"}), 404
 
+    moderator = is_moderator(current)
+
     if chat_type == "group":
         allowed = (
             existing.get("from") == current
             or group.get("creator") == current
+            or moderator
         )
     else:
-        allowed = existing.get("from") == current
+        allowed = existing.get("from") == current or moderator
 
     if not allowed:
         return jsonify({
@@ -902,22 +1001,28 @@ def users_list():
 
     users_dict = db.all_users()
 
-    users = [
-        {
+    banned_set = db.all_bans()
+
+    users = []
+    for username, data in users_dict.items():
+        if username == current:
+            continue
+        users.append({
             "username": username,
             "display_name": data.get("display_name", username),
             "avatar": data.get("avatar"),
             "bio": data.get("bio", ""),
-        }
-        for username, data in users_dict.items()
-        if username != current
-    ]
+            "friend_status": db.friendship_status(current, username),
+            "is_mod": is_moderator(username),
+        })
 
     return render_template(
         "users.html",
         users=users,
         session_user=current,
         users_dict=users_dict,
+        is_mod=is_moderator(current),
+        banned_set=banned_set,
     )
 
 
@@ -1055,6 +1160,20 @@ def group_chat(group_id):
 
         publish_message("group", group_id, message)
 
+        # Notify members who are not watching this group right now.
+        if not events.has_subscribers("group", group_id):
+            preview = message.get("text") or "📎 sent an attachment"
+            for member in group.get("members", []):
+                if member == current:
+                    continue
+                push_notification(
+                    member,
+                    "group",
+                    current,
+                    f"#{group['name']}: {preview[:70]}",
+                    f"/group/{group_id}",
+                )
+
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify({
                 "status": "ok",
@@ -1064,6 +1183,9 @@ def group_chat(group_id):
         return redirect(f"/group/{group_id}")
 
     messages = db.get_messages("group", group_id, 200)
+
+    # Opening the group clears its notifications.
+    db.mark_notifications_read(current, link=f"/group/{group_id}")
 
     users = db.all_users()
 
@@ -1202,6 +1324,17 @@ def leave_group(group_id):
 
 MAX_THREAD_TITLE_LENGTH = 150
 MAX_POST_BODY_LENGTH = 5_000
+
+# Moderators can ban/unban users, delete accounts and delete any message.
+MODERATORS = {
+    m.strip()
+    for m in os.environ.get("BOBWORLD_MODS", "bob").split(",")
+    if m.strip()
+}
+
+
+def is_moderator(username):
+    return username in MODERATORS
 
 
 @app.template_filter("ts")
@@ -1393,6 +1526,374 @@ def forum_delete_reply(reply_id):
                 pass
 
     return redirect(f"/forum/{reply['thread_id']}")
+
+
+# ============================================================
+# FRIENDS
+# ============================================================
+
+@app.route("/friends")
+def friends_page():
+
+    me = session["user"]
+
+    users = db.all_users()
+
+    friends = []
+    for friend in db.list_friends(me):
+        info = users.get(friend, {})
+        friends.append({
+            "username": friend,
+            "display_name": info.get("display_name", friend),
+            "avatar": info.get("avatar"),
+        })
+
+    incoming = [
+        {
+            **req,
+            "display_name": users.get(req["requester"], {}).get(
+                "display_name", req["requester"]
+            ),
+        }
+        for req in db.list_pending_incoming(me)
+    ]
+
+    outgoing = [
+        {
+            **req,
+            "display_name": users.get(req["addressee"], {}).get(
+                "display_name", req["addressee"]
+            ),
+        }
+        for req in db.list_pending_outgoing(me)
+    ]
+
+    user_data = users.get(me) or {}
+
+    return render_template(
+        "friends.html",
+        section="friends",
+        friends=friends,
+        incoming=incoming,
+        outgoing=outgoing,
+        user=me,
+        display_name=user_data.get("display_name", me),
+        avatar=user_data.get("avatar"),
+        bio=user_data.get("bio", ""),
+    )
+
+
+@app.route("/friends/request/<username>", methods=["POST"])
+def friend_request_route(username):
+
+    me = session["user"]
+
+    if not db.user_exists(username):
+        return jsonify({"error": "User not found"}), 404
+
+    try:
+        result = db.send_friend_request(me, username)
+    except ValueError as exc:
+        return redirect("/users")
+
+    if result == "pending_out":
+        push_notification(
+            username,
+            "friend_request",
+            me,
+            f"{me} sent you a friend request.",
+            "/friends",
+        )
+
+    return redirect(request.form.get("next") or "/users")
+
+
+@app.route("/friends/accept/<int:req_id>", methods=["POST"])
+def friend_accept_route(req_id):
+
+    me = session["user"]
+
+    req = db.get_friend_request(req_id)
+
+    if not req or req["addressee"] != me or req["status"] != "pending":
+        return redirect("/friends")
+
+    db.accept_friend_request(req_id)
+
+    push_notification(
+        req["requester"],
+        "friend_accepted",
+        me,
+        f"{me} accepted your friend request.",
+        f"/user/{me}",
+    )
+
+    return redirect("/friends")
+
+
+@app.route("/friends/decline/<int:req_id>", methods=["POST"])
+def friend_decline_route(req_id):
+
+    me = session["user"]
+
+    req = db.get_friend_request(req_id)
+
+    # Works for declining incoming AND cancelling outgoing requests.
+    if not req or (req["addressee"] != me and req["requester"] != me):
+        return redirect("/friends")
+
+    db.decline_friend_request(req_id)
+
+    return redirect("/friends")
+
+
+@app.route("/friends/remove/<username>", methods=["POST"])
+def friend_remove_route(username):
+
+    me = session["user"]
+
+    db.remove_friend(me, username)
+
+    return redirect(request.form.get("next") or "/friends")
+
+
+# ============================================================
+# NOTIFICATIONS
+# ============================================================
+
+@app.route("/notifications")
+def notifications_api():
+
+    me = session["user"]
+
+    return jsonify({
+        "unread": db.unread_notification_count(me),
+        "items": db.list_notifications(me),
+    })
+
+
+@app.route("/notifications/read", methods=["POST"])
+def notifications_read_api():
+
+    me = session["user"]
+
+    data = request.get_json(silent=True) or {}
+
+    if data.get("id") is not None:
+        db.mark_notifications_read(me, notif_id=int(data["id"]))
+    else:
+        db.mark_notifications_read(me)  # mark all
+
+    return jsonify({"status": "ok"})
+
+
+@app.route("/stream/notify")
+def stream_notify():
+
+    me = session["user"]
+
+    q = events.subscribe_notify(me)
+
+    def generate():
+        try:
+            yield (
+                "data: "
+                + json.dumps({"type": "connected"})
+                + "\n\n"
+            )
+
+            while True:
+                try:
+                    event = q.get(timeout=25)
+                    yield (
+                        "data: "
+                        + json.dumps(event, ensure_ascii=False)
+                        + "\n\n"
+                    )
+                except queue.Empty:
+                    yield (
+                        "data: "
+                        + json.dumps({"type": "heartbeat"})
+                        + "\n\n"
+                    )
+        except GeneratorExit:
+            pass
+        finally:
+            events.unsubscribe_notify(me, q)
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+# ============================================================
+# ACCOUNT: PASSWORD & DELETE
+# ============================================================
+
+@app.route("/profile/password", methods=["POST"])
+def profile_password():
+
+    me = session["user"]
+
+    current_pw = request.form.get("current_password", "")
+    new_pw = request.form.get("new_password", "")
+    confirm_pw = request.form.get("confirm_password", "")
+
+    def back(err=None, ok=None):
+        return redirect(f"/profile?{'err' if err else 'ok'}="
+                        + (err or ok or ""))
+
+    user_full = db.get_user_full(me)
+
+    if not user_full or not check_password_hash(
+        user_full.get("password_hash", ""),
+        current_pw
+    ):
+        return redirect("/profile?err=Current+password+is+incorrect.")
+
+    if len(new_pw) < 4:
+        return redirect("/profile?err=New+password+must+be+at+least+4+characters.")
+
+    if new_pw != confirm_pw:
+        return redirect("/profile?err=New+passwords+do+not+match.")
+
+    db.change_password(me, generate_password_hash(new_pw))
+
+    return redirect("/profile?ok=Password+updated.")
+
+
+@app.route("/profile/delete", methods=["POST"])
+def profile_delete():
+
+    me = session["user"]
+
+    result = db.delete_user_account(me)
+
+    # Remove owned files from disk.
+    files = [result.get("avatar")]
+    files += result.get("forum_images", [])
+    files += result.get("group_images", [])
+
+    for filename in files:
+        if not filename:
+            continue
+        path = os.path.join(UPLOAD_FOLDER, filename)
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+    events.publish_notify(me, {"type": "account_deleted"})
+
+    session.clear()
+
+    return redirect("/login?deleted=1")
+
+
+# ============================================================
+# MODERATION
+#
+# Users listed in MODERATORS (default: "bob") may ban/unban users,
+# delete accounts and delete any message.
+# ============================================================
+
+def _mod_guard():
+    """Returns an error response when the caller is not a moderator."""
+    if not is_moderator(session["user"]):
+        return jsonify({"error": "Moderator access required"}), 403
+    return None
+
+
+def _unlink_upload(filename):
+    if not filename:
+        return
+    path = os.path.join(UPLOAD_FOLDER, filename)
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+@app.route("/mod/ban/<username>", methods=["POST"])
+def mod_ban(username):
+
+    guard = _mod_guard()
+
+    if guard:
+        return guard
+
+    if username == session["user"]:
+        return jsonify({"error": "You cannot ban yourself"}), 400
+
+    if is_moderator(username):
+        return jsonify({"error": "Cannot ban a moderator"}), 400
+
+    if not db.user_exists(username):
+        return jsonify({"error": "User not found"}), 404
+
+    reason = request.form.get("reason", "").strip()[:200]
+
+    db.ban_user(username, reason)
+
+    # Kick them out of any open tabs right away.
+    events.publish_notify(username, {"type": "banned"})
+
+    return redirect(request.form.get("next") or "/users")
+
+
+@app.route("/mod/unban/<username>", methods=["POST"])
+def mod_unban(username):
+
+    guard = _mod_guard()
+
+    if guard:
+        return guard
+
+    db.unban_user(username)
+
+    return redirect(request.form.get("next") or "/users")
+
+
+@app.route("/mod/delete_user/<username>", methods=["POST"])
+def mod_delete_user(username):
+
+    guard = _mod_guard()
+
+    if guard:
+        return guard
+
+    if username == session["user"]:
+        return jsonify({"error": "You cannot delete your own account here;"
+                        " use Profile → Delete Account"}), 400
+
+    if is_moderator(username):
+        return jsonify({"error": "Cannot delete a moderator"}), 400
+
+    if not db.user_exists(username):
+        return jsonify({"error": "User not found"}), 404
+
+    result = db.delete_user_account(username)
+
+    _unlink_upload(result.get("avatar"))
+
+    for filename in result.get("forum_images", []):
+        _unlink_upload(filename)
+
+    for filename in result.get("group_images", []):
+        _unlink_upload(filename)
+
+    # Tell their open tabs the account ceased to exist.
+    events.publish_notify(username, {"type": "account_deleted"})
+
+    return redirect(request.form.get("next") or "/users")
 
 
 # ============================================================
