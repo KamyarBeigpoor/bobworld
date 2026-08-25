@@ -1,0 +1,189 @@
+/* ========== RETRO VIDEO PLAYER ========== */
+.retro-video-player {
+    background: var(--button-face);
+    border: var(--border-width) outset var(--button-face);
+    box-shadow: var(--shadow);
+    padding: 4px;
+    display: inline-block;
+    max-width: 100%;
+}
+
+.retro-video-player video {
+    border: var(--border-width) inset var(--button-face);
+    box-shadow: var(--shadow-inset);
+    background: #000;
+    display: block;
+    width: 100%;
+}
+
+.retro-video-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 4px 4px 4px;
+    background: var(--surface);
+    border: var(--border-width) inset var(--button-face);
+    margin-top: 4px;
+}
+
+.retro-video-btn {
+    background: var(--button-face);
+    border: var(--border-width) outset var(--button-face);
+    box-shadow: var(--shadow);
+    width: 28px;
+    height: 24px;
+    border-radius: 0;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: var(--transition);
+    flex-shrink: 0;
+}
+
+.retro-video-btn:active {
+    border: var(--border-width) inset var(--button-face);
+    box-shadow: var(--shadow-inset);
+}
+
+.retro-video-btn:hover {
+    background: var(--button-highlight);
+}
+
+.retro-progress-container {
+    flex: 1;
+    min-width: 60px;
+}
+
+.retro-progress-bar {
+    background: var(--surface);
+    border: var(--border-width) inset var(--button-face);
+    box-shadow: var(--shadow-inset);
+    height: 16px;
+    cursor: pointer;
+    position: relative;
+}
+
+.retro-progress-filled {
+    background: var(--header-gradient);
+    height: 100%;
+    width: 0%;
+    box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.retro-time-display {
+    font-family: monospace;
+    font-size: 0.7rem;
+    color: var(--text);
+    white-space: nowrap;
+    padding: 0 4px;
+}
+
+/* Dark theme adjustments */
+[data-theme="dark"] .retro-video-player {
+    background: var(--button-face);
+}
+
+[data-theme="dark"] .retro-video-controls {
+    background: var(--surface);
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+    .retro-video-controls {
+        gap: 4px;
+        padding: 4px 2px;
+    }
+    .retro-video-btn {
+        width: 24px;
+        height: 22px;
+        font-size: 12px;
+    }
+    .retro-time-display {
+        font-size: 0.6rem;
+    }
+}
+/* Fullscreen mode styling for the container */
+.retro-video-player:fullscreen {
+    max-width: none !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    background: #000;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+}
+
+.retro-video-player:fullscreen video {
+    max-height: none !important;
+    height: calc(100vh - 40px) !important; /* leave space for controls */
+    object-fit: contain;
+}
+
+.retro-video-player:fullscreen .retro-video-controls {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--surface);
+    border: var(--border-width) outset var(--button-face);
+}
+
+/* Vendor prefixes */
+.retro-video-player:-webkit-full-screen {
+    max-width: none !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    background: #000;
+    padding: 0;
+}
+
+.retro-video-player:-webkit-full-screen video {
+    max-height: none !important;
+    height: calc(100vh - 40px) !important;
+    object-fit: contain;
+}
+
+.retro-video-player:-moz-full-screen {
+    max-width: none !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    background: #000;
+    padding: 0;
+}
+
+.retro-video-player:-moz-full-screen video {
+    max-height: none !important;
+    height: calc(100vh - 40px) !important;
+    object-fit: contain;
+}
+
+.retro-video-player:-ms-fullscreen {
+    max-width: none !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    background: #000;
+    padding: 0;
+}
+
+.retro-video-player:-ms-fullscreen video {
+    max-height: none !important;
+    height: calc(100vh - 40px) !important;
+    object-fit: contain;
+}
