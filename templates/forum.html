@@ -11,7 +11,7 @@
             rel="icon"
             href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
         />
-        <link rel="stylesheet" href="/static/css/chat.css?v=8" />
+        <link rel="stylesheet" href="/static/css/chat.css?v=9" />
     </head>
     <body data-user="{{ user }}" data-display="{{ display_name }}">
         <div class="app">
@@ -65,10 +65,6 @@
                 {% include "_topbar.html" %}
 
                 <div class="forum-container">
-                    <div class="forum-header">
-                        <h2>All Threads</h2>
-                    </div>
-
                     <details class="create-panel">
                         <summary class="create-toggle"
                             >➕ New Thread</summary
@@ -116,45 +112,62 @@
                         </form>
                     </details>
 
-                    <div class="threads-list">
+                    {# ---------- Board-style column headers ---------- #}
+                    <div class="board-head">
+                        <span class="col-score">Score</span>
+                        <span class="col-topic">Topic</span>
+                        <span class="col-replies">Replies</span>
+                        <span class="col-votes">Likes</span>
+                        <span class="col-activity">Activity</span>
+                    </div>
+
+                    <div class="threads-list board-list">
                         {% for t in threads %}
-                        <div class="thread-card">
-                            <div class="thread-title">{{ t.title }}</div>
-                            <div class="thread-meta">
-                                by
-                                {{
-                                users.get(t.author,
-                                {}).get('display_name', t.author)
-                                }} • {{ t.timestamp|ts }} •
-                                {{ t.reply_count }}
-                                repl{{ 'y' if t.reply_count == 1 else 'ies'
-                                }}
+                        <div class="thread-row">
+                            <div class="row-score{% if t.my_vote == 1 %} upvoted{% elif t.my_vote == -1 %} downvoted{% endif %}">
+                                {{ '+' if t.score > 0 else '' }}{{ t.score }}
                             </div>
-                            {% if t.image %}
-                            <div class="thread-thumb">
-                                <img
-                                    src="/uploads/{{ t.image }}"
-                                    alt="attachment"
-                                    loading="lazy"
-                                />
-                            </div>
-                            {% endif %}
-                            {% if t.body %}
-                            <div class="thread-excerpt">
-                                {{ t.body[:140] }}{% if t.body|length > 140
-                                %}...{% endif %}
-                            </div>
-                            {% endif %}
-                            <div class="thread-actions">
+                            <div class="row-topic">
                                 <a
                                     href="/forum/{{ t.id }}"
-                                    class="group-btn"
-                                    >Open Thread</a
+                                    class="thread-link"
+                                    >{{ t.title }}</a
                                 >
+                                {% if t.image %}
+                                <span class="paperclip" title="has image"
+                                    >🖼️</span
+                                >
+                                {% endif %}
+                                {% if t.body %}
+                                <div class="thread-excerpt">
+                                    {{ t.body[:120] }}{% if t.body|length
+                                    > 120 %}...{% endif %}
+                                </div>
+                                {% endif %}
+                                <div class="thread-meta">
+                                    by
+                                    {{
+                                    users.get(t.author,
+                                    {}).get('display_name', t.author)
+                                    }}
+                                    • {{ t.timestamp|ts }}
+                                </div>
+                            </div>
+                            <div class="row-replies">
+                                {{ t.reply_count }}<br />
+                                <span class="stat-label">repl{{
+                                    'y' if t.reply_count == 1 else 'ies'
+                                    }}</span>
+                            </div>
+                            <div class="row-votes">
+                                👍 {{ t.likes }}<br />👎 {{ t.dislikes }}
+                            </div>
+                            <div class="row-activity">
+                                {{ t.last_activity|ts }}
                             </div>
                         </div>
                         {% else %}
-                        <p class="no-groups">
+                        <p class="no-groups board-empty">
                             No threads yet. Start the first one!
                         </p>
                         {% endfor %}
@@ -171,6 +184,6 @@
                 avatar: "{{ avatar }}"
             };
         </script>
-        <script src="/static/js/chat.js?v=8"></script>
+        <script src="/static/js/chat.js?v=9"></script>
     </body>
 </html>

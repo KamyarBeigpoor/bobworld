@@ -11,7 +11,7 @@
             rel="icon"
             href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
         />
-        <link rel="stylesheet" href="/static/css/chat.css?v=8" />
+        <link rel="stylesheet" href="/static/css/chat.css?v=9" />
     </head>
     <body>
         <div class="app">
@@ -101,10 +101,11 @@
                                 />
                             </div>
                             <div class="form-group">
-                                <label>Display Name</label>
+                                <label>Display Name (required)</label>
                                 <input
                                     type="text"
                                     name="display_name"
+                                    required
                                     maxlength="64"
                                     value="{{ profile.get('display_name', user) }}"
                                 />
@@ -197,6 +198,18 @@
                                     and your forum posts. This cannot be
                                     undone.
                                 </p>
+                                <div class="form-group">
+                                    <label for="del-password"
+                                        >Confirm your password to delete</label
+                                    >
+                                    <input
+                                        type="password"
+                                        id="del-password"
+                                        name="password"
+                                        required
+                                        autocomplete="current-password"
+                                    />
+                                </div>
                                 <button
                                     type="submit"
                                     class="save-btn danger-btn"
@@ -210,6 +223,6 @@
             </main>
         </div>
         <div class="mobile-overlay" id="mobileOverlay"></div>
-        <script src="/static/js/chat.js?v=8"></script>
+        <script src="/static/js/chat.js?v=9"></script>
     </body>
 </html>

@@ -11,7 +11,7 @@
             rel="icon"
             href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
         />
-        <link rel="stylesheet" href="/static/css/chat.css?v=8" />
+        <link rel="stylesheet" href="/static/css/chat.css?v=9" />
     </head>
     <body data-user="{{ user }}" data-display="{{ display_name }}">
         <div class="app">
@@ -59,12 +59,13 @@
                     <button class="hamburger" id="hamburgerBtn">☰</button>
                     <h2>{{ thread.title }}</h2>
                     <div class="group-admin-controls">
-                        {% if thread.author == user %}
+                        {% if thread.author == user or is_mod %}
                         <form
                             method="POST"
                             action="/forum/{{ thread.id }}/delete"
-                            onsubmit="return confirm('Delete this thread and all replies?')"
+                            onsubmit="return confirm('Delete this thread and ALL replies (including other people\\'s)?')"
                         >
+                            <input type="hidden" name="next" value="/forum" />
                             <button
                                 type="submit"
                                 class="admin-btn danger"
@@ -87,160 +88,208 @@
                         >
                     </p>
 
-                    <div class="forum-posts">
-                        {# Original post #}
-                        {% set author = users.get(thread.author, {}) %}
-                        <article class="post op" id="post-{{ thread.id }}">
-                            <div class="post-side">
-                                {% if author.get('avatar') %}
-                                <img
-                                    src="/avatars/{{ author.avatar }}"
-                                    class="post-avatar"
-                                    alt="{{ thread.author }}"
-                                />
-                                {% else %}
-                                <div class="post-avatar-default">
+                    {# ==================================================
+                       Recursive post renderer (reddit-style tree)
+                       ================================================== #}
+                    {% macro render_post(node, is_op=False) %}
+                    <article
+                        class="post{% if is_op %} op{% endif %}"
+                        id="{{ 'post-' if is_op else 'reply-' }}{{ node.id }}"
+                    >
+                        <div class="post-side">
+                            {% set author_data = users.get(node.author, {}) %}
+                            {% if author_data.get('avatar') %}
+                            <img
+                                src="/avatars/{{ author_data.avatar }}"
+                                class="post-avatar"
+                                alt="{{ node.author }}"
+                            />
+                            {% else %}
+                            <div class="post-avatar-default">
+                                {{
+                                author_data.get('display_name',
+                                node.author)[0]|upper }}
+                            </div>
+                            {% endif %}
+                            <div class="post-author">@{{ node.author }}</div>
+                        </div>
+                        <div class="post-main">
+                            <div class="post-head">
+                                <span class="who">
                                     {{
-                                    users.get(thread.author,
-                                    {}).get('display_name',
-                                    thread.author)[0]|upper }}
-                                </div>
-                                {% endif %}
-                                <div class="post-author">
-                                    @{{ thread.author }}
-                                </div>
-                            </div>
-                            <div class="post-main">
-                                <div class="post-head">
-                                    <span class="who">
-                                        {{
-                                        users.get(thread.author,
-                                        {}).get('display_name',
-                                        thread.author) }}
-                                        <span class="replies-badge"
-                                            >OP</span
-                                        >
-                                    </span>
-                                    <span class="when"
-                                        >{{ thread.timestamp|ts }}</span
+                                    author_data.get('display_name',
+                                    node.author) }}
+                                    {% if is_op %}
+                                    <span class="replies-badge">OP</span>
+                                    {% endif %}
+                                </span>
+                                <span class="when"
+                                    >{{ node.timestamp|ts }}</span
+                                >
+                                {% if not is_op and (node.author == user or
+                                is_mod) %}
+                                <form
+                                    method="POST"
+                                    action="/forum/reply/{{ node.id }}/delete"
+                                    onsubmit="return confirm('Delete this post and everything replied under it?')"
+                                    class="post-del-form"
+                                >
+                                    <button
+                                        type="submit"
+                                        class="post-del"
+                                        title="{{
+                                            'Delete post' if node.author ==
+                                            user else
+                                            'Moderator delete'
+                                        }}"
                                     >
-                                </div>
-                                {% if thread.body %}
-                                <div class="post-body">{{ thread.body }}</div>
-                                {% endif %}
-                                {% if thread.image %}
-                                <div class="post-img">
-                                    <img
-                                        src="/uploads/{{ thread.image }}"
-                                        alt="attachment"
-                                        loading="lazy"
-                                        onclick="window.open(this.src)"
-                                    />
-                                </div>
+                                        delete
+                                    </button>
+                                </form>
                                 {% endif %}
                             </div>
-                        </article>
+                            {% if node.body %}
+                            <div class="post-body">{{ node.body }}</div>
+                            {% endif %}
+                            {% if node.image %}
+                            <div class="post-img">
+                                <img
+                                    src="/uploads/{{ node.image }}"
+                                    alt="attachment"
+                                    loading="lazy"
+                                    onclick="window.open(this.src)"
+                                />
+                            </div>
+                            {% endif %}
 
-                        {# Replies #}
-                        {% for r in replies %}
-                        {% set rauthor = users.get(r.author, {}) %}
-                        <article class="post" id="reply-{{ r.id }}">
-                            <div class="post-side">
-                                {% if rauthor.get('avatar') %}
-                                <img
-                                    src="/avatars/{{ rauthor.avatar }}"
-                                    class="post-avatar"
-                                    alt="{{ r.author }}"
-                                />
-                                {% else %}
-                                <div class="post-avatar-default">
-                                    {{
-                                    rauthor.get('display_name',
-                                    r.author)[0]|upper }}
-                                </div>
-                                {% endif %}
-                                <div class="post-author">@{{ r.author }}</div>
-                            </div>
-                            <div class="post-main">
-                                <div class="post-head">
-                                    <span class="who">
-                                        {{
-                                        rauthor.get('display_name', r.author)
-                                        }}
-                                    </span>
-                                    <form
-                                        method="POST"
-                                        action="/forum/reply/{{ r.id }}/delete"
-                                        onsubmit="return confirm('Delete this reply?')"
+                            {# ---- votes + reply actions ---- #}
+                            <div
+                                class="vote-widget"
+                                data-type="{{ 'thread' if is_op else 'reply' }}"
+                                data-target="{{ node.id }}"
+                            >
+                                <button
+                                    type="button"
+                                    class="vote-btn like{% if node.my_vote == 1 %} active{% endif %}"
+                                    data-vote="1"
+                                    title="Like"
+                                >
+                                    👍
+                                    <span class="like-count"
+                                        >{{ node.likes }}</span
                                     >
-                                        {% if r.author == user %}
+                                </button>
+                                <span class="score-num{% if node.my_vote == 1 %} pos{% elif node.my_vote == -1 %} neg{% endif %}">
+                                    {{ '+' if node.score > 0 else '' }}{{
+                                    node.score }}
+                                </span>
+                                <button
+                                    type="button"
+                                    class="vote-btn dislike{% if node.my_vote == -1 %} active{% endif %}"
+                                    data-vote="-1"
+                                    title="Dislike"
+                                >
+                                    👎
+                                    <span class="dislike-count"
+                                        >{{ node.dislikes }}</span
+                                    >
+                                </button>
+                                <button
+                                    type="button"
+                                    class="reply-toggle mini-btn"
+                                    data-target="form-{{
+                                        'op' if is_op else node.id
+                                    }}"
+                                >
+                                    ↩ Reply
+                                </button>
+                            </div>
+
+                            {# ---- inline reply form (nested) ---- #}
+                            <div
+                                class="inline-reply"
+                                id="form-{{ 'op' if is_op else node.id }}"
+                                hidden
+                            >
+                                <form
+                                    method="POST"
+                                    enctype="multipart/form-data"
+                                    action="/forum/{{ thread.id }}/reply"
+                                >
+                                    <input
+                                        type="hidden"
+                                        name="parent_id"
+                                        value="{% if not is_op %}{{
+                                            node.id
+                                        }}{% endif %}"
+                                    />
+                                    <div class="form-group">
+                                        <textarea
+                                            name="body"
+                                            maxlength="5000"
+                                            placeholder="Reply to @{{
+                                                node.author
+                                            }}..."></textarea>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="avatar-upload-btn">
+                                            🖼️ Image
+                                            <input
+                                                type="file"
+                                                name="image"
+                                                accept="image/*"
+                                                style="display: none"
+                                            />
+                                        </label>
+                                        <div class="file-hint">
+                                            PNG/JPG/GIF/WebP — optional
+                                        </div>
+                                    </div>
+                                    <div class="inline-reply-actions">
                                         <button
                                             type="submit"
-                                            class="post-del"
-                                            title="Delete reply"
+                                            class="save-btn btn-inline"
                                         >
-                                            delete
+                                            Post Reply
                                         </button>
-                                        {% endif %}
-                                    </form>
-                                    <span class="when"
-                                        >{{ r.timestamp|ts }}</span
-                                    >
-                                </div>
-                                {% if r.body %}
-                                <div class="post-body">{{ r.body }}</div>
-                                {% endif %}
-                                {% if r.image %}
-                                <div class="post-img">
-                                    <img
-                                        src="/uploads/{{ r.image }}"
-                                        alt="attachment"
-                                        loading="lazy"
-                                        onclick="window.open(this.src)"
-                                    />
-                                </div>
-                                {% endif %}
+                                        <button
+                                            type="button"
+                                            class="back-btn btn-inline inline-cancel"
+                                            data-target="form-{{
+                                                'op' if is_op else node.id
+                                            }}"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </form>
                             </div>
-                        </article>
-                        {% endfor %}
-                    </div>
 
-                    {# Reply form #}
-                    <form
-                        class="forum-form"
-                        method="POST"
-                        enctype="multipart/form-data"
-                        action="/forum/{{ thread.id }}/reply"
-                        style="margin-top: 24px"
-                    >
-                        <div class="join-group-form">
-                            <h3>💬 Post a reply</h3>
-                            <div class="form-group">
-                                <textarea
-                                    name="body"
-                                    placeholder="Write your reply..."
-                                    maxlength="5000"></textarea>
+                            {# ---- children (nested replies) ---- #}
+                            {% if node.children %}
+                            <div class="replies-children">
+                                {% for child in node.children %}
+                                {{ render_post(child) }}
+                                {% endfor %}
                             </div>
-                            <div class="form-group">
-                                <label class="avatar-upload-btn">
-                                    🖼️ Attach image
-                                    <input
-                                        type="file"
-                                        name="image"
-                                        accept="image/*"
-                                        style="display: none"
-                                    />
-                                </label>
-                                <div class="file-hint">
-                                    PNG, JPG, GIF or WebP — optional if you
-                                    wrote something.
-                                </div>
-                            </div>
-                            <button type="submit" class="save-btn">
-                                Post Reply
-                            </button>
+                            {% endif %}
                         </div>
-                    </form>
+                    </article>
+                    {% endmacro %}
+
+                    <div class="forum-posts">
+                        {{ render_post(thread, is_op=True) }}
+
+                        {% for root in replies %}
+                        {{ render_post(root) }}
+                        {% endfor %}
+
+                        {% if not replies %}
+                        <p class="no-groups board-empty">
+                            No replies yet. Be the first!
+                        </p>
+                        {% endif %}
+                    </div>
                 </div>
             </main>
         </div>
@@ -252,7 +301,114 @@
                 display_name: "{{ display_name }}",
                 avatar: "{{ avatar }}"
             };
+
+            // ================= VOTES ==================
+            function formatScore(score) {
+                return (score > 0 ? "+" : "") + score;
+            }
+
+            document.querySelectorAll(".vote-btn").forEach(function (btn) {
+                btn.addEventListener("click", async function () {
+                    var widget = btn.closest(".vote-widget");
+                    var targetType = widget.dataset.type;
+                    var targetId = widget.dataset.target;
+                    var voteValue = parseInt(btn.dataset.vote, 10);
+
+                    // Clicking your active vote removes it (toggle).
+                    var payload = {
+                        target_type: targetType,
+                        target_id: targetId,
+                        value: btn.classList.contains("active")
+                            ? 0
+                            : voteValue,
+                    };
+
+                    try {
+                        var resp = await fetch("/forum/vote", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "X-Requested-With": "XMLHttpRequest",
+                            },
+                            body: JSON.stringify(payload),
+                        });
+                        if (!resp.ok) {
+                            var err = await resp.json().catch(function () {
+                                return {};
+                            });
+                            alert(err.error || "Vote failed");
+                            return;
+                        }
+                        var data = await resp.json();
+
+                        // Update EVERY widget bound to this target.
+                        document
+                            .querySelectorAll(
+                                '.vote-widget[data-type="' +
+                                    targetType +
+                                    '"][data-target="' +
+                                    targetId +
+                                    '"]'
+                            )
+                            .forEach(function (w) {
+                                var scoreEl = w.querySelector(".score-num");
+                                scoreEl.textContent = formatScore(data.score);
+                                scoreEl.classList.toggle(
+                                    "pos",
+                                    data.my_vote === 1
+                                );
+                                scoreEl.classList.toggle(
+                                    "neg",
+                                    data.my_vote === -1
+                                );
+                                w.querySelector(".like-count").textContent =
+                                    data.likes;
+                                w.querySelector(
+                                    ".dislike-count"
+                                ).textContent = data.dislikes;
+                                w.querySelector(".vote-btn.like")
+                                    .classList.toggle(
+                                        "active",
+                                        data.my_vote === 1
+                                    );
+                                w.querySelector(".vote-btn.dislike")
+                                    .classList.toggle(
+                                        "active",
+                                        data.my_vote === -1
+                                    );
+                            });
+                    } catch (e) {
+                        console.error(e);
+                        alert("Network error");
+                    }
+                });
+            });
+
+            // ================= INLINE REPLY FORMS ==================
+            document.querySelectorAll(".reply-toggle").forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    var form = document.getElementById(btn.dataset.target);
+                    if (form) {
+                        form.hidden = !form.hidden;
+                        if (!form.hidden) {
+                            var ta = form.querySelector("textarea");
+                            if (ta) ta.focus();
+                            form.scrollIntoView({
+                                behavior: "smooth",
+                                block: "nearest",
+                            });
+                        }
+                    }
+                });
+            });
+
+            document.querySelectorAll(".inline-cancel").forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    var form = document.getElementById(btn.dataset.target);
+                    if (form) form.hidden = true;
+                });
+            });
         </script>
-        <script src="/static/js/chat.js?v=8"></script>
+        <script src="/static/js/chat.js?v=9"></script>
     </body>
 </html>

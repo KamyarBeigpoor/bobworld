@@ -23,6 +23,7 @@ import threading
 import time
 import uuid
 from datetime import timedelta
+from urllib.parse import urlparse
 
 
 # ============================================================
@@ -66,6 +67,11 @@ app.secret_key = os.environ.get(
 
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+# Set SESSION_COOKIE_SECURE=true in .env once the site is served over HTTPS.
+if os.environ.get("SESSION_COOKIE_SECURE", "").lower() in ("1", "true", "yes"):
+    app.config["SESSION_COOKIE_SECURE"] = True
 
 # ============================================================
 # DEPLOYMENT SELF-CHECK
@@ -181,6 +187,14 @@ cipher = Fernet(ENCRYPTION_KEY)
 # ============================================================
 # DATABASE
 # ============================================================
+#
+# Two backends are available behind the same Database API:
+#
+#   SQLite  (default)          - local file, zero config.
+#   Supabase (PostgreSQL)      - set SUPABASE_DB_URL in .env to switch;
+#                                run migrate_sqlite_to_supabase.py once
+#                                to move existing data over.
+#
 
 def _default_db_path():
     # Renamed from bobgram: keep using an existing legacy database so no
@@ -188,12 +202,21 @@ def _default_db_path():
     return "bobgram.db" if os.path.exists("bobgram.db") else "bobworld.db"
 
 
-DB_PATH = (
-    os.environ.get("BOBWORLD_DB")
-    or os.environ.get("BOBGRAM_DB")  # legacy env var, still honored
-    or _default_db_path()
-)
-db = Database(DB_PATH, cipher)
+SUPABASE_DB_URL = (
+    os.environ.get("SUPABASE_DB_URL")
+    or os.environ.get("DATABASE_URL")
+    or ""
+).strip()
+
+if SUPABASE_DB_URL:
+    db = Database.open_supabase(SUPABASE_DB_URL, cipher)
+else:
+    DB_PATH = (
+        os.environ.get("BOBWORLD_DB")
+        or os.environ.get("BOBGRAM_DB")  # legacy env var, still honored
+        or _default_db_path()
+    )
+    db = Database.open_sqlite(DB_PATH, cipher)
 
 try:
     migration_stats = db.migrate_legacy_if_empty(os.path.dirname(
@@ -479,6 +502,82 @@ def sanitize_reply(reply_data):
 
 
 # ============================================================
+# SECURITY HELPERS
+# ============================================================
+
+def current_uid():
+    """Immutable internal id of the logged-in account (or None)."""
+    return session.get("uid")
+
+
+def safe_redirect_target(target, fallback="/"):
+    """Only allow same-site relative redirects (blocks open redirects)."""
+    if target and target.startswith("/") and not target.startswith("//"):
+        return target
+    return fallback
+
+
+def _same_origin_request():
+    """
+    True when there is solid browser evidence that this state-changing
+    request originates from THIS site (anti-CSRF):
+
+    - Sec-Fetch-Site: same-origin / none   (modern browsers), or
+    - Origin header absent AND Referer host == request host
+      (older browsers omit Sec-Fetch-Site; POSTs always carry Origin,
+       so a missing Origin + matching Referer is still first-party).
+    """
+    sec_fetch = request.headers.get("Sec-Fetch-Site", "")
+    if sec_fetch:
+        return sec_fetch.lower() in ("same-origin", "same-site", "none")
+
+    origin = request.headers.get("Origin")
+    if origin:
+        try:
+            return urlparse(origin).netloc == request.host
+        except ValueError:
+            return False
+
+    referer = request.headers.get("Referer")
+    if referer:
+        try:
+            return bool(urlparse(referer).netloc) \
+                and urlparse(referer).netloc == request.host
+        except ValueError:
+            return False
+
+    # No browser signals at all: allow only token-authenticated calls.
+    token = session.get("csrf_token")
+    supplied = (
+        request.headers.get("X-CSRF-Token")
+        or request.form.get("csrf_token")
+    )
+    return bool(token and supplied and secrets.compare_digest(
+        token, supplied
+    ))
+
+
+@app.before_request
+def csrf_origin_guard():
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        if not _same_origin_request():
+            return jsonify({"error": "Cross-site request blocked"}), 403
+    # Issue a per-session token so templates/JS can authenticate fetches
+    # from clients that send no Origin/Sec-Fetch headers.
+    if session.get("user") and not session.get("csrf_token"):
+        session["csrf_token"] = secrets.token_hex(32)
+    return None
+
+
+@app.after_request
+def security_headers(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    return response
+
+
+# ============================================================
 # AUTH MIDDLEWARE
 # ============================================================
 
@@ -502,11 +601,23 @@ def check_active_session():
     if request.path.startswith("/avatars/"):
         return None
 
-    if not session.get("user"):
+    username = session.get("user")
+
+    if not username:
         return redirect("/login")
 
+    # GHOST-ACCOUNT GUARD: the session must match a user who STILL
+    # exists AND whose immutable id matches the one stored at login.
+    # - database wiped/replaced  -> no such user -> force logout.
+    # - account deleted, someone re-registers the same name -> their new
+    #   id differs from our session id -> old sessions are dead.
+    full = db.get_user_full(username)
+    if full is None or full.get("id") != session.get("uid"):
+        session.clear()
+        return redirect("/login?deleted=1")
+
     # A banned user loses their session on the next request.
-    if db.is_banned(session["user"]):
+    if db.is_banned(username):
         session.clear()
         return redirect("/login?banned=1")
 
@@ -520,6 +631,35 @@ def check_active_session():
 @app.route("/")
 def index():
     return redirect("/chat")
+
+
+# ============================================================
+# LOGIN RATE LIMITING
+#
+# Small in-memory sliding window per IP+username. Enough to make
+# password brute-forcing impractical without external dependencies.
+# ============================================================
+
+LOGIN_MAX_ATTEMPTS = 10
+LOGIN_WINDOW_SECONDS = 300
+_login_attempts = {}
+_login_lock = threading.Lock()
+
+
+def _login_blocked(key):
+    now = time.time()
+    with _login_lock:
+        window = [
+            ts for ts in _login_attempts.get(key, ())
+            if now - ts < LOGIN_WINDOW_SECONDS
+        ]
+        _login_attempts[key] = window
+        return len(window) >= LOGIN_MAX_ATTEMPTS
+
+
+def _login_record_failure(key):
+    with _login_lock:
+        _login_attempts.setdefault(key, []).append(time.time())
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -540,25 +680,37 @@ def login():
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
 
-        user = db.get_user_full(username)
+        key = f"{request.remote_addr}|{username.lower()}"
 
-        if user and db.is_banned(username):
-            error = "This account has been banned."
-        elif user and check_password_hash(
-            user.get("password_hash", ""),
-            password
-        ):
-            session.clear()
-            session["user"] = username
-            session.permanent = True
+        if _login_blocked(key):
+            error = (
+                "Too many login attempts. Please wait a few minutes "
+                "and try again."
+            )
+        else:
+            user = db.get_user_full(username)
 
-            return redirect("/chat")
+            if user and db.is_banned(username):
+                error = "This account has been banned."
+                _login_record_failure(key)
+            elif user and check_password_hash(
+                user.get("password_hash", ""),
+                password
+            ):
+                session.clear()
+                session["user"] = username
+                # Bind the session to this account's immutable id.
+                session["uid"] = user.get("id")
+                session.permanent = True
 
-        elif user is None or not check_password_hash(
-            user.get("password_hash", ""),
-            password
-        ):
-            error = "Invalid username or password."
+                return redirect("/chat")
+
+            elif user is None or not check_password_hash(
+                user.get("password_hash", ""),
+                password
+            ):
+                error = "Invalid username or password."
+                _login_record_failure(key)
 
     return render_template(
         "login.html",
@@ -577,7 +729,7 @@ def signup():
 
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-        display_name = request.form.get("display_name", username).strip()
+        display_name = request.form.get("display_name", "").strip()
         bio = request.form.get("bio", "").strip()
 
         if not username:
@@ -591,6 +743,8 @@ def signup():
             )
         elif not password:
             error = "Password is required."
+        elif not display_name:
+            error = "Display name is required."
         elif len(display_name) > MAX_DISPLAY_NAME_LENGTH:
             error = "Display name is too long (max 64 characters)."
         elif len(bio) > MAX_BIO_LENGTH:
@@ -599,15 +753,19 @@ def signup():
             error = "That username is already taken."
 
         if error is None:
+            new_id = uuid.uuid4().hex
+
             db.create_user(
                 username,
                 generate_password_hash(password),
                 display_name,
                 bio,
+                user_id=new_id,
             )
 
             session.clear()
             session["user"] = username
+            session["uid"] = new_id
             session.permanent = True
 
             return redirect("/chat")
@@ -637,6 +795,7 @@ def profile():
     username = session["user"]
 
     user_data = db.get_user(username) or {
+        "id": current_uid(),
         "username": username,
         "display_name": "",
         "bio": "",
@@ -645,11 +804,16 @@ def profile():
 
     if request.method == "POST":
 
-        display_name = request.form.get("display_name", username).strip()
-        bio = request.form.get("bio", "").strip()
+        # Display name is mandatory now.
+        display_name = request.form.get("display_name", "").strip()
+
+        if not display_name:
+            return "Display name is required", 400
 
         if len(display_name) > MAX_DISPLAY_NAME_LENGTH:
             return "Display name too long", 400
+
+        bio = request.form.get("bio", "").strip()
 
         if len(bio) > MAX_BIO_LENGTH:
             return "Bio too long", 400
@@ -678,7 +842,7 @@ def profile():
 
             new_avatar = uploaded
 
-        db.update_profile(username, display_name or username, bio, new_avatar)
+        db.update_profile(username, display_name, bio, new_avatar)
 
         return redirect("/profile")
 
@@ -700,10 +864,10 @@ def view_user(username):
 
     profile = db.get_user(username)
 
-    current = db.get_user(session["user"]) or {}
-
     if not profile:
         abort(404)
+
+    current = db.get_user(session["user"]) or {}
 
     return render_template(
         "user_profile.html",
@@ -739,6 +903,7 @@ def create_message(sender, text, file):
     message = {
         "id": str(uuid.uuid4()),
         "from": sender,
+        "sender_id": current_uid(),
         "text": text,
         "file": filename,
         "timestamp": int(time.time() * 1000),
@@ -954,15 +1119,26 @@ def delete_message():
         return jsonify({"error": "Message not found"}), 404
 
     moderator = is_moderator(current)
+    uid = current_uid()
+
+    # Ownership is decided by the stored SENDER ID (immune to username
+    # reuse); the username comparison only covers legacy rows that were
+    # never backfilled.
+    owns = (
+        existing.get("sender_id") == uid
+        if existing.get("sender_id")
+        else existing.get("from") == current
+    )
 
     if chat_type == "group":
         allowed = (
-            existing.get("from") == current
+            owns
             or group.get("creator") == current
+            or group.get("creator_id") == uid
             or moderator
         )
     else:
-        allowed = existing.get("from") == current or moderator
+        allowed = owns or moderator
 
     if not allowed:
         return jsonify({
@@ -1090,6 +1266,7 @@ def create_group():
             group_id,
             name,
             current,
+            current_uid(),
             generate_password_hash(password),
         )
 
@@ -1238,7 +1415,13 @@ def edit_group(group_id):
     if not group:
         return jsonify({"error": "Group not found"}), 404
 
-    if group.get("creator") != current:
+    uid = current_uid()
+
+    owns_group = (
+        group.get("creator") == current or group.get("creator_id") == uid
+    )
+
+    if not owns_group:
         return jsonify({"error": "Only creator can edit"}), 403
 
     db.update_group_name(group_id, name)
@@ -1272,7 +1455,10 @@ def delete_group(group_id):
     if group is None:
         return jsonify({"error": "Group not found"}), 404
 
-    if group.get("creator") != current:
+    uid = current_uid()
+
+    if group.get("creator") != current \
+            and group.get("creator_id") != uid:
         return jsonify({"error": "Only creator can delete"}), 403
 
     # Remove attachments belonging to the group.
@@ -1323,12 +1509,14 @@ def leave_group(group_id):
 # ============================================================
 # FORUM
 #
-# Deliberately simple: threads + replies, optional image per
-# post, no live streaming (refresh to see new posts).
+# Classic board layout: threads with like/dislike scores, and
+# reddit-style NESTED replies (reply-to-reply). Optional image per
+# post; no live streaming (refresh to see new posts).
 # ============================================================
 
 MAX_THREAD_TITLE_LENGTH = 150
 MAX_POST_BODY_LENGTH = 5_000
+MAX_REPLY_DEPTH = 10
 
 # Moderators can ban/unban users, delete accounts and delete any message.
 MODERATORS = {
@@ -1376,7 +1564,7 @@ def forum():
 
     current = session["user"]
 
-    threads = db.list_forum_threads()
+    threads = db.list_forum_threads(viewer=current)
     users = db.all_users()
     user_data = db.get_user(current) or {}
 
@@ -1417,7 +1605,9 @@ def forum_new():
 
         thread_id = uuid.uuid4().hex
 
-        db.create_forum_thread(thread_id, current, title, body, image)
+        db.create_forum_thread(
+            thread_id, current, current_uid(), title, body, image
+        )
 
         return redirect(f"/forum/{thread_id}")
 
@@ -1430,12 +1620,12 @@ def forum_thread(thread_id):
 
     current = session["user"]
 
-    thread = db.get_forum_thread(thread_id)
+    thread = db.get_forum_thread(thread_id, viewer=current)
 
     if not thread:
         abort(404)
 
-    replies = db.get_forum_replies(thread_id)
+    replies = db.get_forum_replies(thread_id, viewer=current)
     users = db.all_users()
     user_data = db.get_user(current) or {}
 
@@ -1446,6 +1636,7 @@ def forum_thread(thread_id):
         replies=replies,
         users=users,
         user=current,
+        is_mod=is_moderator(current),
         display_name=user_data.get("display_name", current),
         avatar=user_data.get("avatar"),
         bio=user_data.get("bio", ""),
@@ -1468,15 +1659,61 @@ def forum_reply(thread_id):
     if not body and not image:
         return "Reply cannot be empty", 400
 
+    parent_id = (request.form.get("parent_id") or "").strip() or None
+
+    if parent_id:
+        parent = db.get_forum_reply(parent_id)
+
+        # The parent must belong to THIS thread.
+        if not parent or parent["thread_id"] != thread_id:
+            return "Invalid parent reply", 400
+
+        # Cap nesting depth so the tree stays readable.
+        if db.get_reply_depth(parent_id) >= MAX_REPLY_DEPTH:
+            return "Reply nesting is too deep here", 400
+
     db.add_forum_reply(
         thread_id,
+        parent_id,
         uuid.uuid4().hex,
         current,
+        current_uid(),
         body,
         image,
     )
 
     return redirect(f"/forum/{thread_id}")
+
+
+@app.route("/forum/vote", methods=["POST"])
+def forum_vote():
+
+    current = session["user"]
+
+    data = request.get_json(silent=True) or {}
+
+    target_type = data.get("target_type")
+    target_id = data.get("target_id")
+    value = data.get("value")
+
+    if target_type not in ("thread", "reply"):
+        return jsonify({"error": "Invalid target_type"}), 400
+
+    if value not in (-1, 0, 1):
+        return jsonify({"error": "Invalid value"}), 400
+
+    exists = (
+        db.get_forum_thread(target_id)
+        if target_type == "thread"
+        else db.get_forum_reply(target_id)
+    )
+
+    if not exists:
+        return jsonify({"error": "Not found"}), 404
+
+    summary = db.set_vote(target_type, target_id, current, value)
+
+    return jsonify(summary)
 
 
 @app.route("/forum/<thread_id>/delete", methods=["POST"])
@@ -1489,9 +1726,16 @@ def forum_delete_thread(thread_id):
     if not thread:
         return jsonify({"error": "Thread not found"}), 404
 
-    if thread["author"] != current:
+    uid = current_uid()
+    owns = (
+        thread["author_id"] == uid
+        if thread.get("author_id")
+        else thread["author"] == current
+    )
+
+    if not owns and not is_moderator(current):
         return jsonify({
-            "error": "Only the author can delete this thread"
+            "error": "Only the author or a moderator can delete this thread"
         }), 403
 
     for filename in db.delete_forum_thread(thread_id):
@@ -1502,7 +1746,7 @@ def forum_delete_thread(thread_id):
             except OSError:
                 pass
 
-    return redirect("/forum")
+    return redirect(request.form.get("next") or "/forum")
 
 
 @app.route("/forum/reply/<reply_id>/delete", methods=["POST"])
@@ -1515,15 +1759,26 @@ def forum_delete_reply(reply_id):
     if not reply:
         return jsonify({"error": "Reply not found"}), 404
 
-    if reply["author"] != current:
+    uid = current_uid()
+    owns = (
+        reply["author_id"] == uid
+        if reply.get("author_id")
+        else reply["author"] == current
+    )
+
+    if not owns and not is_moderator(current):
         return jsonify({
-            "error": "Only the author can delete this reply"
+            "error": "Only the author or a moderator can delete this reply"
         }), 403
 
-    db.delete_forum_reply(reply_id)
+    deleted = db.delete_forum_reply(reply_id)
 
-    if reply.get("image"):
-        path = os.path.join(UPLOAD_FOLDER, reply["image"])
+    for filename in [reply.get("image")] + (
+        deleted.get("_deleted_images", []) if deleted else []
+    ):
+        if not filename:
+            continue
+        path = os.path.join(UPLOAD_FOLDER, filename)
         if os.path.exists(path):
             try:
                 os.remove(path)
@@ -1610,23 +1865,36 @@ def friend_request_route(username):
             "/friends",
         )
 
-    return redirect(request.form.get("next") or "/users")
+    return redirect(safe_redirect_target(
+        request.form.get("next"), "/users"
+    ))
 
 
-@app.route("/friends/accept/<int:req_id>", methods=["POST"])
-def friend_accept_route(req_id):
+@app.route("/friends/accept/<path:req_ref>", methods=["POST"])
+def friend_accept_route(req_ref):
+    """req_ref: '<requester>|<addressee>'."""
 
     me = session["user"]
 
-    req = db.get_friend_request(req_id)
+    parts = req_ref.split("|", 1)
+
+    if len(parts) != 2:
+        return redirect("/friends")
+
+    requester, addressee = parts
+
+    if addressee != me:
+        return redirect("/friends")
+
+    req = db.get_friend_request(req_ref)
 
     if not req or req["addressee"] != me or req["status"] != "pending":
         return redirect("/friends")
 
-    db.accept_friend_request(req_id)
+    db.accept_friend_request(requester, addressee)
 
     push_notification(
-        req["requester"],
+        requester,
         "friend_accepted",
         me,
         f"{me} accepted your friend request.",
@@ -1636,18 +1904,27 @@ def friend_accept_route(req_id):
     return redirect("/friends")
 
 
-@app.route("/friends/decline/<int:req_id>", methods=["POST"])
-def friend_decline_route(req_id):
+@app.route("/friends/decline/<path:req_ref>", methods=["POST"])
+def friend_decline_route(req_ref):
+    """req_ref: '<requester>|<addressee>'. Works for declining incoming
+    AND cancelling outgoing requests."""
 
     me = session["user"]
 
-    req = db.get_friend_request(req_id)
+    parts = req_ref.split("|", 1)
+
+    if len(parts) != 2:
+        return redirect("/friends")
+
+    requester, addressee = parts
+
+    req = db.get_friend_request(req_ref)
 
     # Works for declining incoming AND cancelling outgoing requests.
     if not req or (req["addressee"] != me and req["requester"] != me):
         return redirect("/friends")
 
-    db.decline_friend_request(req_id)
+    db.decline_friend_request(requester, addressee)
 
     return redirect("/friends")
 
@@ -1659,7 +1936,9 @@ def friend_remove_route(username):
 
     db.remove_friend(me, username)
 
-    return redirect(request.form.get("next") or "/friends")
+    return redirect(safe_redirect_target(
+        request.form.get("next"), "/friends"
+    ))
 
 
 # ============================================================
@@ -1745,14 +2024,11 @@ def stream_notify():
 def profile_password():
 
     me = session["user"]
+    uid = current_uid()
 
     current_pw = request.form.get("current_password", "")
     new_pw = request.form.get("new_password", "")
     confirm_pw = request.form.get("confirm_password", "")
-
-    def back(err=None, ok=None):
-        return redirect(f"/profile?{'err' if err else 'ok'}="
-                        + (err or ok or ""))
 
     user_full = db.get_user_full(me)
 
@@ -1762,13 +2038,18 @@ def profile_password():
     ):
         return redirect("/profile?err=Current+password+is+incorrect.")
 
+    # Guard against a re-registered username hijacking this route.
+    if not uid or user_full.get("id") != uid:
+        session.clear()
+        return redirect("/login?deleted=1")
+
     if len(new_pw) < 4:
         return redirect("/profile?err=New+password+must+be+at+least+4+characters.")
 
     if new_pw != confirm_pw:
         return redirect("/profile?err=New+passwords+do+not+match.")
 
-    db.change_password(me, generate_password_hash(new_pw))
+    db.change_password(me, generate_password_hash(new_pw), expect_id=uid)
 
     return redirect("/profile?ok=Password+updated.")
 
@@ -1777,8 +2058,27 @@ def profile_password():
 def profile_delete():
 
     me = session["user"]
+    uid = current_uid()
 
-    result = db.delete_user_account(me)
+    # Require the current password so a hijacked tab cannot nuke the
+    # account in one click.
+    password = request.form.get("password", "")
+
+    user_full = db.get_user_full(me)
+
+    if not user_full or not check_password_hash(
+        user_full.get("password_hash", ""),
+        password
+    ):
+        return redirect(
+            "/profile?err=Password+required+to+delete+the+account."
+        )
+
+    result = db.delete_user_account(me, expect_id=uid)
+
+    if result is None:
+        session.clear()
+        return redirect("/login?deleted=1")
 
     # Remove owned files from disk.
     files = [result.get("avatar")]
@@ -1851,7 +2151,9 @@ def mod_ban(username):
     # Kick them out of any open tabs right away.
     events.publish_notify(username, {"type": "banned"})
 
-    return redirect(request.form.get("next") or "/users")
+    return redirect(safe_redirect_target(
+        request.form.get("next"), "/users"
+    ))
 
 
 @app.route("/mod/unban/<username>", methods=["POST"])
@@ -1864,7 +2166,9 @@ def mod_unban(username):
 
     db.unban_user(username)
 
-    return redirect(request.form.get("next") or "/users")
+    return redirect(safe_redirect_target(
+        request.form.get("next"), "/users"
+    ))
 
 
 @app.route("/mod/delete_user/<username>", methods=["POST"])
@@ -1887,6 +2191,9 @@ def mod_delete_user(username):
 
     result = db.delete_user_account(username)
 
+    if result is None:
+        return jsonify({"error": "User not found"}), 404
+
     _unlink_upload(result.get("avatar"))
 
     for filename in result.get("forum_images", []):
@@ -1898,7 +2205,9 @@ def mod_delete_user(username):
     # Tell their open tabs the account ceased to exist.
     events.publish_notify(username, {"type": "account_deleted"})
 
-    return redirect(request.form.get("next") or "/users")
+    return redirect(safe_redirect_target(
+        request.form.get("next"), "/users"
+    ))
 
 
 # ============================================================

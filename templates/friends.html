@@ -11,7 +11,7 @@
             rel="icon"
             href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
         />
-        <link rel="stylesheet" href="/static/css/chat.css?v=8" />
+        <link rel="stylesheet" href="/static/css/chat.css?v=9" />
     </head>
     <body data-user="{{ user }}" data-display="{{ display_name }}">
         <div class="app">
@@ -77,7 +77,7 @@
                             <span class="pill">{{ req.display_name }}</span>
                             <form
                                 method="POST"
-                                action="/friends/accept/{{ req.id }}"
+                                action="/friends/accept/{{ req.requester }}%7C{{ req.addressee }}"
                             >
                                 <button type="submit" class="mini-btn">
                                     ✔ Accept
@@ -85,7 +85,7 @@
                             </form>
                             <form
                                 method="POST"
-                                action="/friends/decline/{{ req.id }}"
+                                action="/friends/decline/{{ req.requester }}%7C{{ req.addressee }}"
                             >
                                 <button
                                     type="submit"
@@ -108,7 +108,7 @@
                             <span class="pill">{{ req.display_name }}</span>
                             <form
                                 method="POST"
-                                action="/friends/decline/{{ req.id }}"
+                                action="/friends/decline/{{ req.requester }}%7C{{ req.addressee }}"
                             >
                                 <button
                                     type="submit"
@@ -171,6 +171,6 @@
                 avatar: "{{ avatar }}"
             };
         </script>
-        <script src="/static/js/chat.js?v=8"></script>
+        <script src="/static/js/chat.js?v=9"></script>
     </body>
 </html>

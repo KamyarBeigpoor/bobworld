@@ -336,7 +336,10 @@ img {
     height: 48px;
     object-fit: cover;
     background: var(--field);
-    box-shadow: var(--bevel-in);
+    /* bordered pfps */
+    border: 2px solid var(--face-light);
+    outline: 1px solid var(--mid);
+    box-shadow: var(--bevel-out);
 }
 
 .sidebar-avatar-default {
@@ -606,7 +609,10 @@ img {
     color: #fff;
     font-weight: bold;
     font-size: 14px;
-    box-shadow: var(--bevel-in);
+    /* bordered pfps */
+    border: 2px solid var(--face-light);
+    outline: 1px solid var(--mid);
+    box-shadow: var(--bevel-out);
 }
 
 .bubble {
@@ -1246,51 +1252,131 @@ img {
     background: var(--panel);
 }
 
-.threads-list {
+/* Board-style thread list: score | topic | replies | likes | activity */
+
+.board-head {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 14px;
+    grid-template-columns:
+        64px minmax(0, 1fr) 70px 80px 120px;
+    gap: 10px;
+    align-items: center;
+    padding: 6px 12px;
+    margin-bottom: 8px;
+    background: var(--titlebar);
+    color: var(--titlebar-text);
+    font-family: var(--font-pixel);
+    font-size: 11px;
+    font-weight: bold;
 }
 
-.thread-card {
+.board-head .col-score,
+.board-head .col-replies,
+.board-head .col-votes {
+    text-align: center;
+}
+
+.board-head .col-activity {
+    text-align: right;
+}
+
+.board-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.thread-row {
+    display: grid;
+    grid-template-columns:
+        64px minmax(0, 1fr) 70px 80px 120px;
+    gap: 10px;
+    align-items: center;
     background: var(--face);
     box-shadow: var(--bevel-out);
-    padding: 14px;
+    padding: 10px 12px;
     word-break: break-word;
 }
 
-.thread-title {
+.row-score {
+    text-align: center;
+    font-family: var(--font-mono);
     font-size: 15px;
     font-weight: bold;
-    margin-bottom: 4px;
+    background: var(--field);
+    box-shadow: var(--bevel-in);
+    padding: 8px 2px;
+}
+
+.row-score.upvoted {
+    color: #1a7a1a;
+}
+
+.row-score.downvoted {
+    color: var(--danger);
+}
+
+.thread-link {
+    font-size: 14px;
+    font-weight: bold;
+    color: var(--link);
+    text-decoration: none;
+}
+
+.thread-link:hover {
+    text-decoration: underline;
+    color: var(--link-hover);
 }
 
 .thread-meta {
     font-size: 11px;
     color: var(--muted);
-    margin-bottom: 8px;
+    margin-top: 3px;
 }
 
 .thread-excerpt {
-    font-size: 13px;
-    line-height: 1.4;
-    margin-bottom: 10px;
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--text);
+    opacity: 0.85;
+    margin-top: 4px;
 }
 
-.thread-thumb img {
-    display: block;
-    max-width: 140px;
-    max-height: 90px;
-    object-fit: cover;
-    margin-bottom: 10px;
-    background: var(--field);
-    box-shadow: var(--bevel-in);
+.paperclip {
+    font-size: 12px;
+    margin-left: 4px;
 }
 
-.thread-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+.row-replies {
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: bold;
+}
+
+.stat-label {
+    font-size: 9px;
+    color: var(--muted);
+    font-family: var(--font-ui);
+    font-weight: normal;
+}
+
+.row-votes {
+    text-align: center;
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.row-activity {
+    text-align: right;
+    font-size: 10px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    white-space: nowrap;
+}
+
+.board-empty {
+    padding: 20px;
+    text-align: center;
 }
 
 .replies-badge {
@@ -1300,6 +1386,116 @@ img {
     font-size: 10px;
     font-weight: bold;
     font-family: var(--font-pixel);
+}
+
+/* ---- votes (likes / dislikes) ------------------------------------- */
+
+.vote-widget {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.vote-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 26px;
+    padding: 3px 9px;
+    font-family: var(--font-ui);
+    font-size: 12px;
+    color: var(--text);
+    background: var(--face);
+    box-shadow: var(--bevel-out);
+    cursor: pointer;
+}
+
+.vote-btn:hover {
+    background: var(--face-light);
+}
+
+.vote-btn:active {
+    box-shadow: var(--bevel-in);
+}
+
+.vote-btn.active.like {
+    background: #c8e6c8;
+    box-shadow: var(--bevel-in);
+    font-weight: bold;
+}
+
+.vote-btn.active.dislike {
+    background: #f0c8c8;
+    box-shadow: var(--bevel-in);
+    font-weight: bold;
+}
+
+[data-theme="dark"] .vote-btn.active.like {
+    background: #2e5c34;
+}
+
+[data-theme="dark"] .vote-btn.active.dislike {
+    background: #6b2f2f;
+}
+
+.score-num {
+    min-width: 40px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.score-num.pos {
+    color: #1a7a1a;
+}
+
+.score-num.neg {
+    color: var(--danger);
+}
+
+[data-theme="dark"] .score-num.pos {
+    color: #7fd67f;
+}
+
+/* ---- reddit-style nested replies ----------------------------------- */
+
+.replies-children {
+    margin-top: 10px;
+    margin-left: 14px;
+    padding-left: 10px;
+    border-left: 2px solid var(--mid);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.replies-children .post {
+    animation: none; /* don't replay the slide-in for every level */
+}
+
+.post-del-form {
+    margin-left: auto;
+}
+
+.inline-reply {
+    margin-top: 10px;
+    padding: 10px;
+    background: var(--panel);
+    box-shadow: var(--bevel-in);
+}
+
+.inline-reply textarea {
+    width: 100%;
+    min-height: 70px;
+}
+
+.inline-reply-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
 }
 
 .forum-posts {
@@ -1335,6 +1531,10 @@ img {
     height: 36px;
     object-fit: cover;
     margin: 0 auto;
+    /* bordered pfps */
+    border: 2px solid var(--face-light);
+    outline: 1px solid var(--mid);
+    box-shadow: var(--bevel-out);
 }
 
 .post-avatar-default {
@@ -1493,7 +1693,10 @@ img {
     object-fit: cover;
     margin: 0 auto 12px;
     background: var(--field);
-    box-shadow: var(--bevel-in);
+    /* bordered pfps */
+    border: 3px solid var(--face-light);
+    outline: 1px solid var(--mid);
+    box-shadow: var(--bevel-out), 4px 4px 0 rgba(0, 0, 0, 0.25);
 }
 
 .profile-avatar-default {
@@ -1639,9 +1842,44 @@ img {
         gap: 8px;
     }
 
-    .groups-list,
-    .threads-list {
+    .groups-list {
         grid-template-columns: 1fr;
+    }
+
+    /* Board rows collapse to a compact stacked card on phones. */
+    .board-head {
+        display: none;
+    }
+
+    .thread-row {
+        grid-template-columns: 56px minmax(0, 1fr);
+        grid-template-areas:
+            "score topic"
+            "stats stats";
+    }
+
+    .row-score {
+        grid-area: score;
+    }
+
+    .row-topic {
+        grid-area: topic;
+    }
+
+    .row-replies {
+        grid-area: stats;
+        display: inline;
+        text-align: left;
+    }
+
+    .row-votes,
+    .row-activity {
+        display: none;
+    }
+
+    .replies-children {
+        margin-left: 8px;
+        padding-left: 7px;
     }
 
     .forum-container {
