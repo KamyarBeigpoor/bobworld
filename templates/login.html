@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+        />
+        <title>Login - bobworld</title>
+        <link
+            rel="icon"
+            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
+        />
+        <link rel="stylesheet" href="/static/css/chat.css" />
+    </head>
+    <body>
+        <div class="auth-container">
+            <div class="auth-card">
+                <h1>💬 Login</h1>
+                {% if error %}
+                <div class="msg-error" role="alert">⚠️ {{ error }}</div>
+                {% endif %}
+                <form method="POST" action="/login">
+                    <div class="form-group">
+                        <label for="login-username">Username</label>
+                        <input
+                            type="text"
+                            id="login-username"
+                            name="username"
+                            required
+                            autofocus
+                            autocomplete="username"
+                            autocapitalize="none"
+                            value="{{ username }}"
+                        />
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Password</label>
+                        <input
+                            type="password"
+                            id="login-password"
+                            name="password"
+                            required
+                            autocomplete="current-password"
+                        />
+                    </div>
+                    <button type="submit" class="save-btn">Login</button>
+                    <a href="/signup" class="back-btn">Create account</a>
+                </form>
+            </div>
+        </div>
+        <script>
+            const savedTheme = localStorage.getItem("bobworld-theme") || "light";
+            document.documentElement.setAttribute("data-theme", savedTheme);
+        </script>
+    </body>
+</html>

@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+        />
+        <title>{{ thread.title }} • bobworld Forum</title>
+        <link
+            rel="icon"
+            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
+        />
+        <link rel="stylesheet" href="/static/css/chat.css" />
+    </head>
+    <body data-user="{{ user }}" data-display="{{ display_name }}">
+        <div class="app">
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <div class="user-info-sidebar">
+                        {% if avatar %}
+                        <img
+                            src="/avatars/{{ avatar }}"
+                            class="sidebar-avatar"
+                        />
+                        {% else %}
+                        <div class="sidebar-avatar-default">
+                            {{ user[0]|upper }}
+                        </div>
+                        {% endif %}
+                        <div class="user-text">
+                            <h3>{{ display_name }}</h3>
+                            <p class="username">@{{ user }}</p>
+                        </div>
+                    </div>
+                    <a href="/profile" class="edit-profile">✏️ Edit Profile</a>
+                </div>
+                <nav class="sidebar-nav">
+                    <a href="/chat" class="nav-item">🌍 Global Chat</a>
+                    <a href="/users" class="nav-item">👥 Users</a>
+                    <a href="/groups" class="nav-item">🏡 Groups</a>
+                    <button id="themeToggle" class="nav-item">
+                        🌓 Dark/Light
+                    </button>
+                    <a href="/logout" class="nav-item logout">🚪 Logout</a>
+                </nav>
+                <div class="sidebar-footer">
+                    <p class="bio">
+                        {{ bio[:80] }}{% if bio|length > 80 %}...{% endif %}
+                    </p>
+                </div>
+            </aside>
+
+            <main class="chat-main">
+                <header class="chat-header">
+                    <button class="hamburger" id="hamburgerBtn">☰</button>
+                    <h2>{{ thread.title }}</h2>
+                    <div class="group-admin-controls">
+                        {% if thread.author == user %}
+                        <form
+                            method="POST"
+                            action="/forum/{{ thread.id }}/delete"
+                            onsubmit="return confirm('Delete this thread and all replies?')"
+                        >
+                            <button
+                                type="submit"
+                                class="admin-btn danger"
+                                title="Delete thread"
+                            >
+                                🗑️
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </header>
+
+                {% set section = "forum" %}
+                {% include "_topbar.html" %}
+
+                <div class="forum-container">
+                    <p style="margin: 0 0 14px">
+                        <a href="/forum" class="back-btn btn-inline"
+                            >⬅ Back to all threads</a
+                        >
+                    </p>
+
+                    <div class="forum-posts">
+                        {# Original post #}
+                        {% set author = users.get(thread.author, {}) %}
+                        <article class="post op" id="post-{{ thread.id }}">
+                            <div class="post-side">
+                                {% if author.get('avatar') %}
+                                <img
+                                    src="/avatars/{{ author.avatar }}"
+                                    class="post-avatar"
+                                    alt="{{ thread.author }}"
+                                />
+                                {% else %}
+                                <div class="post-avatar-default">
+                                    {{
+                                    users.get(thread.author,
+                                    {}).get('display_name',
+                                    thread.author)[0]|upper }}
+                                </div>
+                                {% endif %}
+                                <div class="post-author">
+                                    @{{ thread.author }}
+                                </div>
+                            </div>
+                            <div class="post-main">
+                                <div class="post-head">
+                                    <span class="who">
+                                        {{
+                                        users.get(thread.author,
+                                        {}).get('display_name',
+                                        thread.author) }}
+                                        <span class="replies-badge"
+                                            >OP</span
+                                        >
+                                    </span>
+                                    <span class="when"
+                                        >{{ thread.timestamp|ts }}</span
+                                    >
+                                </div>
+                                {% if thread.body %}
+                                <div class="post-body">{{ thread.body }}</div>
+                                {% endif %}
+                                {% if thread.image %}
+                                <div class="post-img">
+                                    <img
+                                        src="/uploads/{{ thread.image }}"
+                                        alt="attachment"
+                                        loading="lazy"
+                                        onclick="window.open(this.src)"
+                                    />
+                                </div>
+                                {% endif %}
+                            </div>
+                        </article>
+
+                        {# Replies #}
+                        {% for r in replies %}
+                        {% set rauthor = users.get(r.author, {}) %}
+                        <article class="post" id="reply-{{ r.id }}">
+                            <div class="post-side">
+                                {% if rauthor.get('avatar') %}
+                                <img
+                                    src="/avatars/{{ rauthor.avatar }}"
+                                    class="post-avatar"
+                                    alt="{{ r.author }}"
+                                />
+                                {% else %}
+                                <div class="post-avatar-default">
+                                    {{
+                                    rauthor.get('display_name',
+                                    r.author)[0]|upper }}
+                                </div>
+                                {% endif %}
+                                <div class="post-author">@{{ r.author }}</div>
+                            </div>
+                            <div class="post-main">
+                                <div class="post-head">
+                                    <span class="who">
+                                        {{
+                                        rauthor.get('display_name', r.author)
+                                        }}
+                                    </span>
+                                    <form
+                                        method="POST"
+                                        action="/forum/reply/{{ r.id }}/delete"
+                                        onsubmit="return confirm('Delete this reply?')"
+                                    >
+                                        {% if r.author == user %}
+                                        <button
+                                            type="submit"
+                                            class="post-del"
+                                            title="Delete reply"
+                                        >
+                                            delete
+                                        </button>
+                                        {% endif %}
+                                    </form>
+                                    <span class="when"
+                                        >{{ r.timestamp|ts }}</span
+                                    >
+                                </div>
+                                {% if r.body %}
+                                <div class="post-body">{{ r.body }}</div>
+                                {% endif %}
+                                {% if r.image %}
+                                <div class="post-img">
+                                    <img
+                                        src="/uploads/{{ r.image }}"
+                                        alt="attachment"
+                                        loading="lazy"
+                                        onclick="window.open(this.src)"
+                                    />
+                                </div>
+                                {% endif %}
+                            </div>
+                        </article>
+                        {% endfor %}
+                    </div>
+
+                    {# Reply form #}
+                    <form
+                        class="forum-form"
+                        method="POST"
+                        enctype="multipart/form-data"
+                        action="/forum/{{ thread.id }}/reply"
+                        style="margin-top: 24px"
+                    >
+                        <div class="join-group-form">
+                            <h3>💬 Post a reply</h3>
+                            <div class="form-group">
+                                <textarea
+                                    name="body"
+                                    placeholder="Write your reply..."
+                                    maxlength="5000"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label class="avatar-upload-btn">
+                                    🖼️ Attach image
+                                    <input
+                                        type="file"
+                                        name="image"
+                                        accept="image/*"
+                                        style="display: none"
+                                    />
+                                </label>
+                                <div class="file-hint">
+                                    PNG, JPG, GIF or WebP — optional if you
+                                    wrote something.
+                                </div>
+                            </div>
+                            <button type="submit" class="save-btn">
+                                Post Reply
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </main>
+        </div>
+        <div class="mobile-overlay" id="mobileOverlay"></div>
+
+        <script>
+            window.CURRENT_USER_DATA = {
+                username: "{{ user }}",
+                display_name: "{{ display_name }}",
+                avatar: "{{ avatar }}"
+            };
+        </script>
+        <script src="/static/js/chat.js"></script>
+    </body>
+</html>

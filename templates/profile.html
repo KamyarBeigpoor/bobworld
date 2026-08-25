@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+        />
+        <title>Edit Profile - bobworld</title>
+        <link
+            rel="icon"
+            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
+        />
+        <link rel="stylesheet" href="/static/css/chat.css" />
+    </head>
+    <body>
+        <div class="app">
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <div class="user-info-sidebar">
+                        {% if profile.avatar %}
+                        <img
+                            src="/avatars/{{ profile.avatar }}"
+                            class="sidebar-avatar"
+                        />
+                        {% else %}
+                        <div class="sidebar-avatar-default">
+                            {{ user[0]|upper }}
+                        </div>
+                        {% endif %}
+                        <div class="user-text">
+                            <h3>{{ profile.get('display_name', user) }}</h3>
+                            <p class="username">@{{ user }}</p>
+                        </div>
+                    </div>
+                    <a href="/profile" class="edit-profile active"
+                        >✏️ Edit Profile</a
+                    >
+                </div>
+                <nav class="sidebar-nav">
+                    <a href="/chat" class="nav-item">🌍 Global Chat</a>
+                    <a href="/users" class="nav-item">👥 Users</a>
+                    <a href="/groups" class="nav-item">🏡 Groups</a>
+                    <button id="themeToggle" class="nav-item">
+                        🌓 Dark/Light
+                    </button>
+                    <a href="/logout" class="nav-item logout">🚪 Logout</a>
+                </nav>
+            </aside>
+
+            <main class="profile-main">
+                <header class="chat-header">
+                    <button class="hamburger" id="hamburgerBtn">☰</button>
+                    <h2>✏️ Edit Profile</h2>
+                    <div class="placeholder"></div>
+                </header>
+
+                {% set section = "chat" %}
+                {% include "_topbar.html" %}
+
+                <div class="profile-container">
+                    <div class="profile-card">
+                        <form method="POST" enctype="multipart/form-data">
+                            <div class="avatar-section">
+                                <div id="avatarPreview">
+                                    {% if profile.avatar %}
+                                    <img
+                                        src="/avatars/{{ profile.avatar }}"
+                                        class="profile-avatar-img"
+                                        id="avatarImg"
+                                    />
+                                    {% else %}
+                                    <div
+                                        class="profile-avatar-default"
+                                        id="avatarPlaceholder"
+                                    >
+                                        {{ user[0]|upper }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <label class="avatar-upload-btn">
+                                    📷 Change Avatar
+                                    <input
+                                        type="file"
+                                        name="avatar"
+                                        id="avatarInput"
+                                        accept="image/png,image/jpeg,image/jpg,image/gif,image/bmp"
+                                        style="display: none"
+                                    />
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label>Username (cannot change)</label>
+                                <input
+                                    type="text"
+                                    value="{{ user }}"
+                                    disabled
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label>Display Name</label>
+                                <input
+                                    type="text"
+                                    name="display_name"
+                                    maxlength="64"
+                                    value="{{ profile.get('display_name', user) }}"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label>Bio</label>
+                                <textarea
+                                    name="bio"
+                                    rows="3"
+                                    maxlength="500">{{ profile.get('bio', '') }}</textarea
+                                >
+                            </div>
+                            <button type="submit" class="save-btn">
+                                Save Changes
+                            </button>
+                            <a href="/chat" class="back-btn">Back to Chat</a>
+                        </form>
+                    </div>
+                </div>
+            </main>
+        </div>
+        <div class="mobile-overlay" id="mobileOverlay"></div>
+        <script src="/static/js/chat.js"></script>
+    </body>
+</html>

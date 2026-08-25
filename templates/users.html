@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+        />
+        <title>Users - bobworld</title>
+        <link
+            rel="icon"
+            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
+        />
+        <link rel="stylesheet" href="/static/css/chat.css" />
+    </head>
+    <body>
+        <div class="app">
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    {% set current_data = users_dict.get(session_user, {}) %}
+                    <div class="user-info-sidebar">
+                        {% if current_data.get('avatar') %}
+                        <img
+                            src="/avatars/{{ current_data.avatar }}"
+                            class="sidebar-avatar"
+                        />
+                        {% else %}
+                        <div class="sidebar-avatar-default">
+                            {{ session_user|first|upper }}
+                        </div>
+                        {% endif %}
+                        <div class="user-text">
+                            <h3>
+                                {{ current_data.get('display_name',
+                                session_user) }}
+                            </h3>
+                            <p class="username">@{{ session_user }}</p>
+                        </div>
+                    </div>
+                    <a href="/profile" class="edit-profile">✏️ Edit Profile</a>
+                </div>
+                <nav class="sidebar-nav">
+                    <a href="/chat" class="nav-item">🌍 Global Chat</a>
+                    <a href="/users" class="nav-item active">👥 Users</a>
+                    <a href="/groups" class="nav-item">🏡 Groups</a>
+                    <button id="themeToggle" class="nav-item">
+                        🌓 Dark/Light
+                    </button>
+                    <a href="/logout" class="nav-item logout">🚪 Logout</a>
+                </nav>
+                <div class="sidebar-footer">
+                    <p class="bio">
+                        {{ current_data.get('bio', '')|truncate(80, True, '...')
+                        }}
+                    </p>
+                </div>
+            </aside>
+
+            <main class="chat-main">
+                <header class="chat-header">
+                    <button class="hamburger" id="hamburgerBtn">☰</button>
+                    <h2>All Users</h2>
+                    <div class="placeholder"></div>
+                </header>
+
+                {% set section = "chat" %}
+                {% include "_topbar.html" %}
+
+                <div class="users-grid">
+                    {% for u in users %}
+                    <div class="user-card" data-username="{{ u.username }}">
+                        <div class="user-avatar">
+                            {% if u.avatar %}
+                            <img
+                                src="/avatars/{{ u.avatar }}"
+                                class="avatar-img"
+                            />
+                            {% else %}
+                            <div class="avatar-default">
+                                {{ u.display_name|first|upper }}
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="user-info">
+                            <div class="user-name">{{ u.display_name }}</div>
+                            <div class="user-username">@{{ u.username }}</div>
+                            <div class="user-bio">{{ u.bio[:60] }}</div>
+                            <div class="user-actions">
+                                <a href="/dm/{{ u.username }}" class="dm-btn">
+                                    Message</a
+                                >
+                                <a
+                                    href="/user/{{ u.username }}"
+                                    class="view-profile-btn"
+                                >
+                                    Profile</a
+                                >
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="no-users">No other users found.</div>
+                    {% endfor %}
+                </div>
+            </main>
+        </div>
+        <div class="mobile-overlay" id="mobileOverlay"></div>
+
+        <script>
+            window.CHAT_TYPE = "users";
+            window.session_user = "{{ session_user }}";
+            // Keyed by username, password hashes stripped server-side.
+            window.USERS_DATA = {{ users_dict|tojson }};
+        </script>
+        <script src="/static/js/chat.js"></script>
+    </body>
+</html>

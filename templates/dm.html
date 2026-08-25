@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+        />
+        <title>bobworld • DM with {{ other_display }}</title>
+        <link
+            rel="icon"
+            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
+        />
+        <link rel="stylesheet" href="/static/css/chat.css" />
+        <link rel="stylesheet" href="/static/css/videoplayer.css" />
+    </head>
+    <body
+        data-user="{{ user }}"
+        data-display="{{ display_name }}"
+        data-avatar="{{ avatar }}"
+    >
+        <div class="app">
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <div class="user-info-sidebar">
+                        {% if avatar %}
+                        <img
+                            src="/avatars/{{ avatar }}"
+                            class="sidebar-avatar"
+                        />
+                        {% else %}
+                        <div class="sidebar-avatar-default">
+                            {{ user[0]|upper }}
+                        </div>
+                        {% endif %}
+                        <div class="user-text">
+                            <h3>{{ display_name }}</h3>
+                            <p class="username">@{{ user }}</p>
+                        </div>
+                    </div>
+                    <a href="/profile" class="edit-profile">✏️ Edit Profile</a>
+                </div>
+                <nav class="sidebar-nav">
+                    <a href="/chat" class="nav-item">🌍 Global Chat</a>
+                    <a href="/users" class="nav-item">👥 Users</a>
+                    <a href="/groups" class="nav-item">🏡 Groups</a>
+                    <button id="themeToggle" class="nav-item">
+                        🌓 Dark/Light
+                    </button>
+                    <a href="/logout" class="nav-item logout">🚪 Logout</a>
+                </nav>
+                <div class="sidebar-footer">
+                    <p class="bio">
+                        {{ bio[:80] }}{% if bio|length > 80 %}...{% endif %}
+                    </p>
+                </div>
+            </aside>
+
+            <main class="chat-main">
+                <header class="chat-header">
+                    <button class="hamburger" id="hamburgerBtn">☰</button>
+                    {% if other_avatar %}
+                    <img
+                        src="/avatars/{{ other_avatar }}"
+                        class="avatar-img"
+                        style="
+                            width: 28px;
+                            height: 28px;
+                            flex-shrink: 0;
+                        "
+                        alt="{{ other }}"
+                    />
+                    {% else %}
+                    <div
+                        class="avatar-default"
+                        style="
+                            width: 28px;
+                            height: 28px;
+                            font-size: 0.8rem;
+                            flex-shrink: 0;
+                            border: none;
+                            box-shadow: none;
+                        "
+                    >
+                        {{ other_display[0]|upper }}
+                    </div>
+                    {% endif %}
+                    <h2>
+                        {{ other_display }}
+                        <span class="username-small">(@{{ other }})</span>
+                    </h2>
+                    <div class="placeholder"></div>
+                </header>
+
+                {% set section = "chat" %}
+                {% include "_topbar.html" %}
+
+                <div class="chat-messages" id="chatMessages">
+                    {% for m in messages %}
+                    <div
+                        class="message {{ 'sent' if m.from == user else 'received' }}"
+                        data-from="{{ m.from }}"
+                        data-timestamp="{{ m.timestamp }}"
+                        data-message-id="{{ m.id }}"
+                    >
+                        {% if m.from != user %}
+                        <div class="avatar" data-username="{{ m.from }}">
+                            {% set sender = users.get(m.from, {}) %} {% if
+                            sender.get('avatar') %}
+                            <img
+                                src="/avatars/{{ sender.avatar }}"
+                                class="avatar-img"
+                            />
+                            {% else %}
+                            <div class="avatar-default">
+                                {{ m.from[0]|upper }}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        <div class="bubble">
+                            <div class="sender">
+                                {% if m.from != user %}
+                                <a
+                                    href="#"
+                                    class="profile-link"
+                                    data-username="{{ m.from }}"
+                                    >{{ sender.get('display_name', m.from) }}</a
+                                >
+                                {% else %}{{ display_name }}{% endif %}
+                            </div>
+                            {% if m.reply %}
+                            <div class="message-quote">
+                                <div class="quote-header">
+                                    ↩️ Replying to {% if m.reply.from == user
+                                    %}you{% else %}{{ users.get(m.reply.from,
+                                    {}).get('display_name', m.reply.from) }}{%
+                                    endif %}
+                                </div>
+                                {% set reply_text = m.reply.get('text', '') %}
+                                <div class="quote-text">
+                                    {{ reply_text[:100] }}{% if
+                                    reply_text|length > 100 %}...{% endif %}
+                                </div>
+                                {% if m.reply.file %}
+                                <div class="quote-file">
+                                    📎 {{ m.reply.file.split('_')|last }}
+                                </div>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                            <div class="text">{{ m.text }}</div>
+                            {% if m.file %}
+                            <div class="attachment">
+                                {% if
+                                m.file.lower().endswith(('.png','.jpg','.jpeg','.gif','.bmp','.webp'))
+                                %}
+                                <img
+                                    src="/uploads/{{ m.file }}"
+                                    alt="image"
+                                    loading="lazy"
+                                    onclick="window.open(this.src)"
+                                />
+                                {% else %}
+                                <a href="/uploads/{{ m.file }}" target="_blank"
+                                    >📎 {{ m.file.split('_',1)[1] if '_' in
+                                    m.file else m.file }}</a
+                                >
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                            <div class="time"></div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <footer class="chat-footer">
+                    <form id="messageForm" enctype="multipart/form-data">
+                        <div class="input-wrapper">
+                            <label class="file-label"
+                                >📎
+                                <input
+                                    type="file"
+                                    name="file"
+                                    id="fileInput"
+                                    accept="image/*,video/*,.pdf,.doc,.docx,.txt"
+                                />
+                            </label>
+                            <textarea
+                                name="message"
+                                id="messageInput"
+                                placeholder="Message {{ other_display }}..."
+                                autocomplete="off"
+                                rows="1"
+                            ></textarea>
+                            <button type="submit" id="sendBtn">Send</button>
+                        </div>
+                    </form>
+                </footer>
+            </main>
+        </div>
+        <div class="mobile-overlay" id="mobileOverlay"></div>
+
+        <script>
+            window.CHAT_TYPE = "dm";
+            window.CHAT_USER = "{{ other }}";
+            window.CURRENT_USER_DATA = {
+                username: "{{ user }}",
+                display_name: "{{ display_name }}",
+                avatar: "{{ avatar }}"
+            };
+            window.USERS_DATA = {{ users|tojson }};
+        </script>
+        <script src="/static/js/video-player.js"></script>
+        <script src="/static/js/chat.js"></script>
+    </body>
+</html>

@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+        />
+        <title>bobworld • Forum</title>
+        <link
+            rel="icon"
+            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
+        />
+        <link rel="stylesheet" href="/static/css/chat.css" />
+    </head>
+    <body data-user="{{ user }}" data-display="{{ display_name }}">
+        <div class="app">
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <div class="user-info-sidebar">
+                        {% if avatar %}
+                        <img
+                            src="/avatars/{{ avatar }}"
+                            class="sidebar-avatar"
+                        />
+                        {% else %}
+                        <div class="sidebar-avatar-default">
+                            {{ user[0]|upper }}
+                        </div>
+                        {% endif %}
+                        <div class="user-text">
+                            <h3>{{ display_name }}</h3>
+                            <p class="username">@{{ user }}</p>
+                        </div>
+                    </div>
+                    <a href="/profile" class="edit-profile">✏️ Edit Profile</a>
+                </div>
+                <nav class="sidebar-nav">
+                    <a href="/chat" class="nav-item">🌍 Global Chat</a>
+                    <a href="/users" class="nav-item">👥 Users</a>
+                    <a href="/groups" class="nav-item">🏡 Groups</a>
+                    <button id="themeToggle" class="nav-item">
+                        🌓 Dark/Light
+                    </button>
+                    <a href="/logout" class="nav-item logout">🚪 Logout</a>
+                </nav>
+                <div class="sidebar-footer">
+                    <p class="bio">
+                        {{ bio[:80] }}{% if bio|length > 80 %}...{% endif %}
+                    </p>
+                </div>
+            </aside>
+
+            <main class="chat-main">
+                <header class="chat-header">
+                    <button class="hamburger" id="hamburgerBtn">☰</button>
+                    <h2>📋 Forum</h2>
+                    <div class="placeholder"></div>
+                </header>
+
+                {% set section = "forum" %}
+                {% include "_topbar.html" %}
+
+                <div class="forum-container">
+                    <div class="forum-header">
+                        <h2>All Threads</h2>
+                    </div>
+
+                    <details class="create-panel">
+                        <summary class="create-toggle"
+                            >➕ New Thread</summary
+                        >
+                        <form
+                            class="create-body forum-form"
+                            method="POST"
+                            action="/forum/new"
+                            enctype="multipart/form-data"
+                        >
+                            <div class="form-group">
+                                <label for="t-title">Title</label>
+                                <input
+                                    type="text"
+                                    id="t-title"
+                                    name="title"
+                                    required
+                                    maxlength="150"
+                                    placeholder="What do you want to talk about?"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label for="t-body">Text (optional)</label>
+                                <textarea
+                                    id="t-body"
+                                    name="body"
+                                    maxlength="5000"
+                                    placeholder="Write your post..."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label class="avatar-upload-btn">
+                                    🖼️ Attach image
+                                    <input
+                                        type="file"
+                                        name="image"
+                                        accept="image/*"
+                                        style="display: none"
+                                    />
+                                </label>
+                                <div class="file-hint">PNG, JPG, GIF or WebP</div>
+                            </div>
+                            <button type="submit" class="save-btn btn-inline">
+                                📋 Post Thread
+                            </button>
+                        </form>
+                    </details>
+
+                    <div class="threads-list">
+                        {% for t in threads %}
+                        <div class="thread-card">
+                            <div class="thread-title">{{ t.title }}</div>
+                            <div class="thread-meta">
+                                by
+                                {{
+                                users.get(t.author,
+                                {}).get('display_name', t.author)
+                                }} • {{ t.timestamp|ts }} •
+                                {{ t.reply_count }}
+                                repl{{ 'y' if t.reply_count == 1 else 'ies'
+                                }}
+                            </div>
+                            {% if t.image %}
+                            <div class="thread-thumb">
+                                <img
+                                    src="/uploads/{{ t.image }}"
+                                    alt="attachment"
+                                    loading="lazy"
+                                />
+                            </div>
+                            {% endif %}
+                            {% if t.body %}
+                            <div class="thread-excerpt">
+                                {{ t.body[:140] }}{% if t.body|length > 140
+                                %}...{% endif %}
+                            </div>
+                            {% endif %}
+                            <div class="thread-actions">
+                                <a
+                                    href="/forum/{{ t.id }}"
+                                    class="group-btn"
+                                    >Open Thread</a
+                                >
+                            </div>
+                        </div>
+                        {% else %}
+                        <p class="no-groups">
+                            No threads yet. Start the first one!
+                        </p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </main>
+        </div>
+        <div class="mobile-overlay" id="mobileOverlay"></div>
+
+        <script>
+            window.CURRENT_USER_DATA = {
+                username: "{{ user }}",
+                display_name: "{{ display_name }}",
+                avatar: "{{ avatar }}"
+            };
+        </script>
+        <script src="/static/js/chat.js"></script>
+    </body>
+</html>

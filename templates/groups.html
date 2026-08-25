@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+        />
+        <title>bobworld • Groups</title>
+        <link
+            rel="icon"
+            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
+        />
+        <link rel="stylesheet" href="/static/css/chat.css" />
+        <style>
+            /* Group card improvements */
+            .group-card {
+                display: flex;
+                flex-direction: column;
+                word-break: break-word;
+            }
+            .group-name {
+                font-size: 1.2rem;
+                font-weight: bold;
+                margin-bottom: 8px;
+                color: white;
+                text-shadow: 1px 1px 0 #000;
+                word-break: break-word;
+            }
+            .group-info {
+                font-size: 0.8rem;
+                color: var(--text-muted);
+                margin-bottom: 8px;
+            }
+            .group-status {
+                font-size: 0.7rem;
+                margin-bottom: 8px;
+            }
+            .member-badge {
+                background: var(--header-gradient);
+                color: white;
+                padding: 2px 6px;
+                font-size: 0.6rem;
+                font-weight: bold;
+                text-shadow: 1px 1px 0 #000;
+                display: inline-block;
+            }
+            .group-actions {
+                display: flex;
+                gap: 8px;
+                margin-bottom: 4px;
+            }
+            .group-btn {
+                background: var(--button-face);
+                border: var(--border-width) outset var(--button-face);
+                box-shadow: var(--shadow);
+                padding: 6px 12px;
+                font-size: 0.8rem;
+                cursor: pointer;
+                color: var(--text);
+                text-decoration: none;
+                font-weight: bold;
+                transition: var(--transition);
+                display: inline-block;
+            }
+            .group-btn:active {
+                border: var(--border-width) inset var(--button-face);
+                box-shadow: var(--shadow-inset);
+            }
+            .group-btn:hover {
+                background: var(--button-highlight);
+            }
+            .join-form-container {
+                margin-top: 8px;
+                display: none;
+                width: 100%;
+            }
+            .join-form-container.active {
+                display: block;
+            }
+            .join-input-group {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                align-items: center;
+            }
+            .join-input-group input {
+                flex: 1 1 120px;
+                min-width: 100px;
+                padding: 6px 8px;
+                background: white;
+                border: var(--border-width) inset var(--button-face);
+                font-family: var(--font-family);
+                font-size: 0.8rem;
+                box-sizing: border-box;
+            }
+            [data-theme="dark"] .join-input-group input {
+                background: #1e2e3e;
+                color: #e0e0e0;
+            }
+            .join-submit-btn {
+                background: var(--button-face);
+                border: var(--border-width) outset var(--button-face);
+                box-shadow: var(--shadow);
+                padding: 6px 10px;
+                font-size: 0.75rem;
+                cursor: pointer;
+                color: var(--text);
+                font-weight: bold;
+                white-space: nowrap;
+                flex-shrink: 0;
+            }
+            .join-submit-btn:active {
+                border: var(--border-width) inset var(--button-face);
+            }
+            .join-cancel-btn {
+                background: var(--button-face);
+                color: var(--text-muted);
+            }
+        </style>
+    </head>
+    <body data-user="{{ user }}">
+        <div class="app">
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <div class="user-info-sidebar">
+                        {% set current_user = users.get(user, {}) %} {% if
+                        current_user.get('avatar') %}
+                        <img
+                            src="/avatars/{{ current_user.avatar }}"
+                            class="sidebar-avatar"
+                        />
+                        {% else %}
+                        <div class="sidebar-avatar-default">
+                            {{ user[0]|upper }}
+                        </div>
+                        {% endif %}
+                        <div class="user-text">
+                            <h3>
+                                {{ current_user.get('display_name', user) }}
+                            </h3>
+                            <p class="username">@{{ user }}</p>
+                        </div>
+                    </div>
+                    <a href="/profile" class="edit-profile">✏️ Edit Profile</a>
+                </div>
+                <nav class="sidebar-nav">
+                    <a href="/chat" class="nav-item">🌍 Global Chat</a>
+                    <a href="/users" class="nav-item">👥 Users</a>
+                    <a href="/groups" class="nav-item active">🏡 Groups</a>
+                    <button id="themeToggle" class="nav-item">
+                        🌓 Dark/Light
+                    </button>
+                    <a href="/logout" class="nav-item logout">🚪 Logout</a>
+                </nav>
+                <div class="sidebar-footer">
+                    <p class="bio">
+                        {{ current_user.get('bio', '')[:80] }}{% if
+                        current_user.get('bio', '')|length > 80 %}...{% endif %}
+                    </p>
+                </div>
+            </aside>
+
+            <main class="chat-main">
+                <header class="chat-header">
+                    <button class="hamburger" id="hamburgerBtn">☰</button>
+                    <h2>All Groups</h2>
+                    <div class="placeholder"></div>
+                </header>
+
+                {% set section = "chat" %}
+                {% include "_topbar.html" %}
+
+                <div class="groups-container">
+                    <div class="groups-header">
+                        <h2>Discover Groups</h2>
+                    </div>
+
+                    <details class="create-panel">
+                        <summary class="create-toggle"
+                            >➕ Create Group</summary
+                        >
+                        <form
+                            class="create-body"
+                            method="POST"
+                            action="/group/create"
+                        >
+                            <div class="form-group">
+                                <label for="g-name">Group Name</label>
+                                <input
+                                    type="text"
+                                    id="g-name"
+                                    name="name"
+                                    required
+                                    maxlength="100"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label for="g-pass"
+                                    >Password (required to join)</label
+                                >
+                                <input
+                                    type="password"
+                                    id="g-pass"
+                                    name="password"
+                                    required
+                                    autocomplete="new-password"
+                                />
+                            </div>
+                            <button type="submit" class="save-btn btn-inline">
+                                🏡 Create Group
+                            </button>
+                        </form>
+                    </details>
+
+                    <div class="groups-list">
+                        {% for group in groups %}
+                        <div class="group-card" data-group-id="{{ group.id }}">
+                            <div class="group-name">#{{ group.name }}</div>
+                            <div class="group-info">
+                                Created by {{ users.get(group.creator,
+                                {}).get('display_name', group.creator) }}<br />
+                                {{ group.member_count }} members
+                            </div>
+                            <div class="group-status">
+                                {% if group.is_member %}
+                                <span class="member-badge">✓ Member</span>
+                                {% endif %}
+                            </div>
+                            <div class="group-actions">
+                                {% if group.is_member %}
+                                <a
+                                    href="/group/{{ group.id }}"
+                                    class="group-btn"
+                                    >Open Chat</a
+                                >
+                                {% else %}
+                                <button
+                                    class="group-btn join-btn"
+                                    data-group-id="{{ group.id }}"
+                                >
+                                    Join Group
+                                </button>
+                                {% endif %}
+                            </div>
+                            {% if not group.is_member %}
+                            <div
+                                class="join-form-container"
+                                id="join-form-{{ group.id }}"
+                            >
+                                <form
+                                    class="join-form"
+                                    data-group-id="{{ group.id }}"
+                                >
+                                    <div class="form-error" hidden></div>
+                                    <div class="join-input-group">
+                                        <input
+                                            type="password"
+                                            name="password"
+                                            placeholder="Enter password"
+                                            required
+                                        />
+                                        <button
+                                            type="submit"
+                                            class="join-submit-btn"
+                                        >
+                                            Join
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="join-submit-btn join-cancel-btn"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <p class="no-groups">
+                            No groups exist yet. Create the first one!
+                        </p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </main>
+        </div>
+        <div class="mobile-overlay" id="mobileOverlay"></div>
+
+        <script>
+            window.CURRENT_USER_DATA = {
+                username: "{{ user }}",
+                display_name: "{{ users.get(user, {}).get('display_name', user) }}",
+                avatar: "{{ users.get(user, {}).get('avatar', '') }}"
+            };
+            window.USERS_DATA = {{ users|tojson }};
+        </script>
+        <script src="/static/js/chat.js"></script>
+        <script>
+            (function () {
+                // Handle Join button clicks
+                document.querySelectorAll(".join-btn").forEach((btn) => {
+                    btn.addEventListener("click", function (e) {
+                        e.stopPropagation();
+                        const groupId = this.dataset.groupId;
+                        const formContainer = document.getElementById(
+                            "join-form-" + groupId,
+                        );
+                        // Hide any other open forms
+                        document
+                            .querySelectorAll(".join-form-container")
+                            .forEach((c) => c.classList.remove("active"));
+                        formContainer.classList.add("active");
+                    });
+                });
+
+                // Handle Cancel buttons
+                document.querySelectorAll(".join-cancel-btn").forEach((btn) => {
+                    btn.addEventListener("click", function (e) {
+                        const formContainer = this.closest(
+                            ".join-form-container",
+                        );
+                        formContainer.classList.remove("active");
+                    });
+                });
+
+                // Handle Join form submissions (inline errors, no alerts)
+                document.querySelectorAll(".join-form").forEach((form) => {
+                    form.addEventListener("submit", async function (e) {
+                        e.preventDefault();
+                        const groupId = this.dataset.groupId;
+                        const password = this.password.value;
+                        const errBox = this.querySelector(".form-error");
+                        errBox.hidden = true;
+                        const formData = new FormData();
+                        formData.append("password", password);
+
+                        try {
+                            const resp = await fetch(
+                                `/group/${groupId}/join`,
+                                {
+                                    method: "POST",
+                                    body: formData,
+                                },
+                            );
+                            if (resp.ok) {
+                                window.location.href = `/group/${groupId}`;
+                            } else if (resp.status === 403) {
+                                errBox.textContent =
+                                    "⚠️ Incorrect password. Please try again.";
+                                errBox.hidden = false;
+                            } else {
+                                errBox.textContent =
+                                    "⚠️ Could not join this group.";
+                                errBox.hidden = false;
+                            }
+                        } catch (err) {
+                            errBox.textContent = "⚠️ Network error.";
+                            errBox.hidden = false;
+                        }
+                    });
+                });
+
+                // Hide any error when opening a join form
+                document.querySelectorAll(".join-btn").forEach((btn) => {
+                    btn.addEventListener("click", function () {
+                        const formContainer = document.getElementById(
+                            "join-form-" + this.dataset.groupId,
+                        );
+                        const errBox =
+                            formContainer.querySelector(".form-error");
+                        if (errBox) errBox.hidden = true;
+                    });
+                });
+
+                // Close forms when clicking outside
+                document.addEventListener("click", function (e) {
+                    if (!e.target.closest(".group-card")) {
+                        document
+                            .querySelectorAll(".join-form-container")
+                            .forEach((c) => c.classList.remove("active"));
+                    }
+                });
+            })();
+        </script>
+    </body>
+</html>
