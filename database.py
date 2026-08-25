@@ -36,117 +36,126 @@ log = logging.getLogger("bobworld.db")
 
 # ======================================================================
 # SCHEMA (portable statements - executed one by one on both backends)
+#
+# IMPORTANT: timestamps are stored as MILLISECONDS since the epoch
+# (~1.7e12). SQLite INTEGER is 64-bit so "INTEGER" is fine there, but
+# PostgreSQL INTEGER is 4-byte and would overflow -> every write would
+# fail with "integer out of range". On PostgreSQL the timestamp columns
+# are therefore created as BIGINT.
 # ======================================================================
 
-SCHEMA_STATEMENTS = [
-    """
-    CREATE TABLE IF NOT EXISTS users (
-        username      TEXT NOT NULL,
-        id            TEXT,
-        password_hash TEXT NOT NULL,
-        display_name  TEXT NOT NULL DEFAULT '',
-        bio           TEXT NOT NULL DEFAULT '',
-        avatar        TEXT,
-        PRIMARY KEY (username)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS groups (
-        id            TEXT PRIMARY KEY,
-        name          TEXT NOT NULL,
-        creator       TEXT NOT NULL,
-        creator_id    TEXT,
-        password_hash TEXT NOT NULL
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS group_members (
-        group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE ON UPDATE CASCADE,
-        username TEXT NOT NULL,
-        PRIMARY KEY (group_id, username)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS messages (
-        id        TEXT PRIMARY KEY,
-        chat_type TEXT NOT NULL CHECK (chat_type IN ('global', 'dm', 'group')),
-        chat_id   TEXT NOT NULL DEFAULT '',
-        sender    TEXT NOT NULL,
-        sender_id TEXT,
-        text      TEXT NOT NULL DEFAULT '',
-        file      TEXT,
-        reply     TEXT,
-        timestamp INTEGER NOT NULL
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS forum_threads (
-        id        TEXT PRIMARY KEY,
-        author    TEXT NOT NULL,
-        author_id TEXT,
-        title     TEXT NOT NULL,
-        body      TEXT NOT NULL DEFAULT '',
-        image     TEXT,
-        timestamp INTEGER NOT NULL
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS forum_replies (
-        id        TEXT PRIMARY KEY,
-        thread_id TEXT NOT NULL REFERENCES forum_threads(id) ON DELETE CASCADE ON UPDATE CASCADE,
-        parent_id TEXT REFERENCES forum_replies(id) ON DELETE CASCADE ON UPDATE CASCADE,
-        author    TEXT NOT NULL,
-        author_id TEXT,
-        body      TEXT NOT NULL DEFAULT '',
-        image     TEXT,
-        timestamp INTEGER NOT NULL
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS forum_votes (
-        target_type TEXT NOT NULL CHECK (target_type IN ('thread', 'reply')),
-        target_id   TEXT NOT NULL,
-        username    TEXT NOT NULL,
-        value       INTEGER NOT NULL CHECK (value IN (-1, 1)),
-        timestamp   INTEGER NOT NULL,
-        PRIMARY KEY (target_type, target_id, username)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS friendships (
-        requester TEXT NOT NULL,
-        addressee TEXT NOT NULL,
-        status    TEXT NOT NULL CHECK (status IN ('pending', 'accepted')),
-        timestamp INTEGER NOT NULL,
-        PRIMARY KEY (requester, addressee)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS bans (
-        username  TEXT PRIMARY KEY,
-        reason    TEXT,
-        timestamp INTEGER NOT NULL
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS notifications (
-        nid       INTEGER NOT NULL DEFAULT 0,
-        username  TEXT NOT NULL,
-        ntype     TEXT NOT NULL,
-        actor     TEXT,
-        text      TEXT NOT NULL DEFAULT '',
-        link      TEXT NOT NULL DEFAULT '',
-        read      INTEGER NOT NULL DEFAULT 0,
-        timestamp INTEGER NOT NULL
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS notification_seq (
-        name TEXT PRIMARY KEY,
-        seq  INTEGER NOT NULL
-    )
-    """,
-]
+def _build_schema(ts):
+    """Returns the CREATE TABLE statements; `ts` is the millisecond
+    timestamp column type (INTEGER on SQLite, BIGINT on PostgreSQL)."""
+    return [
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            username      TEXT NOT NULL,
+            id            TEXT,
+            password_hash TEXT NOT NULL,
+            display_name  TEXT NOT NULL DEFAULT '',
+            bio           TEXT NOT NULL DEFAULT '',
+            avatar        TEXT,
+            PRIMARY KEY (username)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS groups (
+            id            TEXT PRIMARY KEY,
+            name          TEXT NOT NULL,
+            creator       TEXT NOT NULL,
+            creator_id    TEXT,
+            password_hash TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS group_members (
+            group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE ON UPDATE CASCADE,
+            username TEXT NOT NULL,
+            PRIMARY KEY (group_id, username)
+        )
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS messages (
+            id        TEXT PRIMARY KEY,
+            chat_type TEXT NOT NULL CHECK (chat_type IN ('global', 'dm', 'group')),
+            chat_id   TEXT NOT NULL DEFAULT '',
+            sender    TEXT NOT NULL,
+            sender_id TEXT,
+            text      TEXT NOT NULL DEFAULT '',
+            file      TEXT,
+            reply     TEXT,
+            timestamp {ts} NOT NULL
+        )
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS forum_threads (
+            id        TEXT PRIMARY KEY,
+            author    TEXT NOT NULL,
+            author_id TEXT,
+            title     TEXT NOT NULL,
+            body      TEXT NOT NULL DEFAULT '',
+            image     TEXT,
+            timestamp {ts} NOT NULL
+        )
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS forum_replies (
+            id        TEXT PRIMARY KEY,
+            thread_id TEXT NOT NULL REFERENCES forum_threads(id) ON DELETE CASCADE ON UPDATE CASCADE,
+            parent_id TEXT REFERENCES forum_replies(id) ON DELETE CASCADE ON UPDATE CASCADE,
+            author    TEXT NOT NULL,
+            author_id TEXT,
+            body      TEXT NOT NULL DEFAULT '',
+            image     TEXT,
+            timestamp {ts} NOT NULL
+        )
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS forum_votes (
+            target_type TEXT NOT NULL CHECK (target_type IN ('thread', 'reply')),
+            target_id   TEXT NOT NULL,
+            username    TEXT NOT NULL,
+            value       INTEGER NOT NULL CHECK (value IN (-1, 1)),
+            timestamp   {ts} NOT NULL,
+            PRIMARY KEY (target_type, target_id, username)
+        )
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS friendships (
+            requester TEXT NOT NULL,
+            addressee TEXT NOT NULL,
+            status    TEXT NOT NULL CHECK (status IN ('pending', 'accepted')),
+            timestamp {ts} NOT NULL,
+            PRIMARY KEY (requester, addressee)
+        )
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS bans (
+            username  TEXT PRIMARY KEY,
+            reason    TEXT,
+            timestamp {ts} NOT NULL
+        )
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS notifications (
+            nid       INTEGER NOT NULL DEFAULT 0,
+            username  TEXT NOT NULL,
+            ntype     TEXT NOT NULL,
+            actor     TEXT,
+            text      TEXT NOT NULL DEFAULT '',
+            link      TEXT NOT NULL DEFAULT '',
+            read      INTEGER NOT NULL DEFAULT 0,
+            timestamp {ts} NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS notification_seq (
+            name TEXT PRIMARY KEY,
+            seq  INTEGER NOT NULL
+        )
+        """,
+    ]
 
 INDEX_STATEMENTS = [
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_id_unique ON users (id)",
@@ -236,8 +245,9 @@ class PostgresBackend:
     transactions pin one connection for their duration.
     """
 
-    def __init__(self, dsn, minconn=1, maxconn=10):
+    def __init__(self, dsn, minconn=None, maxconn=None):
         try:
+            import psycopg2
             import psycopg2.pool
             from psycopg2.extras import RealDictCursor
             from psycopg2.extensions import parse_dsn
@@ -249,11 +259,37 @@ class PostgresBackend:
 
         self.is_postgres = True
         self._real_dict_cursor = RealDictCursor
+        self._operational_error = psycopg2.OperationalError
 
         opts = parse_dsn(dsn)
+
+        def _env_int(name, default):
+            try:
+                return int(os.environ.get(name, default))
+            except (TypeError, ValueError):
+                return default
+
+        if minconn is None:
+            minconn = _env_int("SUPABASE_POOL_MIN", 2)
+        if maxconn is None:
+            maxconn = _env_int("SUPABASE_POOL_MAX", 12)
+        if maxconn < minconn:
+            maxconn = minconn
+
         opts.setdefault(
             "sslmode", os.environ.get("SUPABASE_SSLMODE", "require")
         )
+        # Fail fast instead of hanging when the network/DB is unreachable.
+        opts.setdefault("connect_timeout",
+                        str(_env_int("SUPABASE_CONNECT_TIMEOUT", 10)))
+        # Supabase's pooler silently drops idle connections; TCP keepalives
+        # keep our pooled sockets alive through NATs/firewalls.
+        opts.setdefault("keepalives", 1)
+        opts.setdefault("keepalives_idle", 30)
+        opts.setdefault("keepalives_interval", 10)
+        opts.setdefault("keepalives_count", 5)
+        opts.setdefault("application_name", "bobworld")
+
         self._pool = psycopg2.pool.ThreadedConnectionPool(
             minconn, maxconn, **opts
         )
@@ -269,17 +305,46 @@ class PostgresBackend:
         try:
             conn.autocommit = True
             yield conn
-        finally:
+        except Exception:
+            # Never hand a possibly-broken connection back to the pool.
+            try:
+                conn.close()
+            except Exception:
+                pass
+            try:
+                self._pool.putconn(conn, close=True)
+            except Exception:
+                pass
+            raise
+        else:
             self._pool.putconn(conn)
 
     def _execute(self, sql, params):
         sql = sql.replace("?", "%s")
-        with self._conn() as conn:
-            with conn.cursor(cursor_factory=self._real_dict_cursor) as cur:
-                cur.execute(sql, tuple(params))
-                if cur.description is None:
-                    return []
-                return [dict(r) for r in cur.fetchall()]
+
+        def run():
+            with self._conn() as conn:
+                with conn.cursor(
+                    cursor_factory=self._real_dict_cursor
+                ) as cur:
+                    cur.execute(sql, tuple(params))
+                    if cur.description is None:
+                        return []
+                    return [dict(r) for r in cur.fetchall()]
+
+        try:
+            return run()
+        except self._operational_error as exc:
+            # The pooled connection probably died server-side (idle drop,
+            # failover, network blip). One retry on a fresh connection;
+            # never retry mid-transaction.
+            if getattr(self._local, "pinned", None) is not None:
+                raise
+            log.warning(
+                "Postgres connection error (%s); retrying once "
+                "on a fresh connection", exc
+            )
+            return run()
 
     def execute(self, sql, params=()):
         self._execute(sql, params)
@@ -297,17 +362,20 @@ class PostgresBackend:
 
     @contextmanager
     def transaction(self):
-        """Pins a pooled connection; nested transactions join the outer."""
+        """Pins a pooled connection; nested transactions join the outer.
+        The connection is ALWAYS returned to the pool afterwards."""
         pinned = getattr(self._local, "pinned", None)
         if pinned is not None:
             yield
             return
         conn = self._pool.getconn()
         self._local.pinned = conn
+        committed = False
         try:
             conn.autocommit = False
             yield
             conn.commit()
+            committed = True
         except Exception:
             try:
                 conn.rollback()
@@ -316,14 +384,42 @@ class PostgresBackend:
             raise
         finally:
             self._local.pinned = None
-            conn.autocommit = True
-            self._pool.putconn(conn)
+            if committed:
+                # Healthy connection: hand it straight back.
+                try:
+                    self._pool.putconn(conn)
+                except Exception:
+                    pass
+            else:
+                # Failed mid-transaction: discard it - its session state
+                # cannot be trusted anymore.
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                try:
+                    self._pool.putconn(conn, close=True)
+                except Exception:
+                    pass
 
     def close(self):
         try:
             self._pool.closeall()
         except Exception:
             pass
+
+
+class _SharedWriteLock:
+    """No-op context manager used in place of the global lock when the
+    backend does not need cross-thread serialization (PostgreSQL pools
+    one connection per operation, and multi-statement writes run inside
+    proper transactions)."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
 
 
 # ======================================================================
@@ -335,7 +431,16 @@ class Database:
     def __init__(self, backend, cipher):
         self.backend = backend
         self._cipher = cipher
-        self._lock = threading.RLock()
+        # SQLite shares ONE connection across threads -> serialize access.
+        # PostgreSQL draws a fresh pooled connection per operation -> a
+        # global lock would serialize the whole SITE behind network
+        # latency, so it is skipped entirely (multi-statement writes are
+        # wrapped in transactions instead).
+        self._lock = (
+            threading.RLock()
+            if not backend.is_postgres
+            else _SharedWriteLock()
+        )
         self._create_schema()
 
     # ------------------------------------------------------------------
@@ -382,10 +487,23 @@ class Database:
 
     def _create_schema(self):
         with self._lock:
-            for stmt in SCHEMA_STATEMENTS:
+            # Millisecond timestamps need 64 bits; see _build_schema.
+            ts_type = "BIGINT" if self.backend.is_postgres else "INTEGER"
+            for stmt in _build_schema(ts_type):
                 self.backend.execute(stmt)
+
+            # Portable counter row for notification ids (both backends).
+            self.backend.execute(
+                self.backend.or_ignore(
+                    "INSERT INTO notification_seq (name, seq)"
+                    " VALUES ('notifications', 0)"
+                )
+            )
+
             if not self.backend.is_postgres:
                 self._sqlite_upgrade_old_database()
+            else:
+                self._pg_widen_timestamp_columns()
             for stmt in INDEX_STATEMENTS:
                 self.backend.execute(stmt)
             self._backfill_owner_ids()
@@ -395,6 +513,44 @@ class Database:
             "SELECT name FROM pragma_table_info(?)", (table,)
         )
         return {r["name"] for r in rows}
+
+    _TS_TABLES = (
+        "messages",
+        "forum_threads",
+        "forum_replies",
+        "forum_votes",
+        "friendships",
+        "bans",
+        "notifications",
+    )
+
+    def _pg_widen_timestamp_columns(self):
+        """
+        Repairs PostgreSQL databases whose millisecond-timestamp columns
+        were created as 4-byte INTEGER (max ~2.1e9) - every write would
+        fail with 'integer out of range'. Widens them to BIGINT in place.
+        No-op when the columns are already BIGINT, so it costs a few
+        catalog lookups per startup and nothing else.
+        """
+        with self._lock:
+            with self.backend.transaction():
+                for table in self._TS_TABLES:
+                    row = self.backend.query_one(
+                        "SELECT data_type FROM information_schema.columns"
+                        " WHERE table_name = ? AND column_name = 'timestamp'",
+                        (table,),
+                    )
+                    if row is None:
+                        continue  # table does not exist yet
+                    if (row.get("data_type") or "").lower() != "bigint":
+                        self.backend.execute(
+                            f"ALTER TABLE {table} ALTER COLUMN timestamp"
+                            f" TYPE BIGINT"
+                        )
+                        log.info(
+                            "Widened %s.timestamp to BIGINT "
+                            "(was: %s)", table, row["data_type"]
+                        )
 
     def _sqlite_upgrade_old_database(self):
         """
@@ -419,10 +575,6 @@ class Database:
                             f" {column} {coltype}"
                         )
             self.backend.execute(
-                "INSERT OR IGNORE INTO notification_seq (name, seq)"
-                " VALUES ('notifications', 0)"
-            )
-            self.backend.execute(
                 "UPDATE notifications SET nid = rowid WHERE nid = 0"
             )
             self.backend.execute(
@@ -435,6 +587,7 @@ class Database:
         """
         Give every user an immutable id and stamp every content row with
         its owner's id. Runs at every startup; a no-op once done.
+        The existence checks keep the common startup path fast.
         """
         with self._lock:
             with self.backend.transaction():
@@ -449,28 +602,31 @@ class Database:
                 # Stamp ownership onto content using the CURRENT owner of
                 # each name. Afterwards ownership checks compare IDs, so
                 # an account reusing the username inherits nothing.
-                self.backend.execute(
-                    "UPDATE messages SET sender_id ="
-                    " (SELECT id FROM users WHERE username = messages.sender)"
-                    " WHERE sender_id IS NULL"
-                )
-                self.backend.execute(
-                    "UPDATE forum_threads SET author_id ="
-                    " (SELECT id FROM users"
-                    "  WHERE username = forum_threads.author)"
-                    " WHERE author_id IS NULL"
-                )
-                self.backend.execute(
-                    "UPDATE forum_replies SET author_id ="
-                    " (SELECT id FROM users"
-                    "  WHERE username = forum_replies.author)"
-                    " WHERE author_id IS NULL"
-                )
-                self.backend.execute(
-                    "UPDATE groups SET creator_id ="
-                    " (SELECT id FROM users WHERE username = groups.creator)"
-                    " WHERE creator_id IS NULL"
-                )
+                probes = [
+                    ("messages", "sender_id"),
+                    ("forum_threads", "author_id"),
+                    ("forum_replies", "author_id"),
+                    ("groups", "creator_id"),
+                ]
+                for table, column in probes:
+                    probe = self.backend.query_one(
+                        f"SELECT 1 AS ok FROM {table}"
+                        f" WHERE {column} IS NULL LIMIT 1"
+                    )
+                    if probe is None:
+                        continue
+                    user_ref = {
+                        "messages": "messages.sender",
+                        "forum_threads": "forum_threads.author",
+                        "forum_replies": "forum_replies.author",
+                        "groups": "groups.creator",
+                    }[table]
+                    self.backend.execute(
+                        f"UPDATE {table} SET {column} ="
+                        f" (SELECT id FROM users"
+                        f"  WHERE username = {user_ref})"
+                        f" WHERE {column} IS NULL"
+                    )
 
     # ------------------------------------------------------------------
     # USERS
@@ -516,6 +672,23 @@ class Database:
                 "SELECT * FROM users WHERE id = ?", (user_id,)
             )
         return self._user_full(row)
+
+    def get_user_with_ban(self, username):
+        """
+        One round trip instead of two: returns
+        (user_full_dict_or_None, is_banned_bool).
+        Used by the session check on EVERY request.
+        """
+        with self._lock:
+            row = self.backend.query_one(
+                "SELECT u.*, b.username AS _banned FROM users u"
+                " LEFT JOIN bans b ON b.username = u.username"
+                " WHERE u.username = ?",
+                (username,),
+            )
+        if row is None:
+            return None, False
+        return self._user_full(row), row.get("_banned") is not None
 
     def user_exists(self, username):
         with self._lock:
@@ -811,6 +984,15 @@ class Database:
             " AS dislikes"
         )
 
+    @staticmethod
+    def _int_votes(row):
+        """PostgreSQL SUM() returns Decimal; coerce vote aggregates to int
+        so templates and JSON never see Decimal."""
+        for key in ("score", "likes", "dislikes"):
+            if key in row:
+                row[key] = int(row[key] or 0)
+        return row
+
     def _my_votes_map(self, target_type, ids, viewer):
         """viewer -> {target_id: value}; empty when viewer is None."""
         if not viewer or not ids:
@@ -856,7 +1038,7 @@ class Database:
             )
         threads = []
         for row in rows:
-            thread = dict(row)
+            thread = self._int_votes(dict(row))
             thread["last_activity"] = thread.get("last_activity") \
                 or thread["timestamp"]
             thread["my_vote"] = my_votes.get(thread["id"], 0)
@@ -873,7 +1055,7 @@ class Database:
             )
         if row is None:
             return None
-        thread = dict(row)
+        thread = self._int_votes(dict(row))
         thread["my_vote"] = self._my_votes_map(
             "thread", [thread_id], viewer
         ).get(thread_id, 0)
@@ -903,7 +1085,7 @@ class Database:
 
         nodes = {}
         for row in rows:
-            node = dict(row)
+            node = self._int_votes(dict(row))
             node["my_vote"] = my_votes.get(node["id"], 0)
             node["children"] = []
             nodes[node["id"]] = node
@@ -938,7 +1120,7 @@ class Database:
             )
         if row is None:
             return None
-        reply = dict(row)
+        reply = self._int_votes(dict(row))
         reply["my_vote"] = self._my_votes_map(
             "reply", [reply_id], viewer
         ).get(reply_id, 0)
@@ -1134,7 +1316,8 @@ class Database:
 
     def send_friend_request(self, requester, addressee):
         """Returns 'pending_out' or 'friends' (mutual add auto-accepts);
-        raises ValueError on invalid state."""
+        raises ValueError on invalid state. The status check + write run
+        in one transaction so concurrent requests cannot double-insert."""
         status = self.friendship_status(requester, addressee)
         if addressee == requester:
             raise ValueError("You cannot befriend yourself.")
@@ -1144,19 +1327,26 @@ class Database:
             raise ValueError("Request already sent.")
         now = int(time.time() * 1000)
         with self._lock:
-            if status == "pending_in":
-                self.backend.execute(
-                    "UPDATE friendships SET status = 'accepted',"
-                    " timestamp = ? WHERE requester = ? AND addressee = ?",
-                    (now, addressee, requester),
-                )
-                return "friends"
-            self.backend.execute(
-                "INSERT INTO friendships (requester, addressee, status,"
-                " timestamp) VALUES (?, ?, 'pending', ?)",
-                (requester, addressee, now),
-            )
-        return "pending_out"
+            with self.backend.transaction():
+                # Re-check inside the transaction (another thread may
+                # have inserted between the check above and now).
+                current = self.friendship_status(requester, addressee)
+                if current == "pending_in":
+                    self.backend.execute(
+                        "UPDATE friendships SET status = 'accepted',"
+                        " timestamp = ? WHERE requester = ? AND addressee = ?",
+                        (now, addressee, requester),
+                    )
+                    return "friends"
+                if current == "none":
+                    self.backend.execute(
+                        self.backend.or_ignore(
+                            "INSERT INTO friendships (requester, addressee,"
+                            " status, timestamp) VALUES (?, ?, 'pending', ?)"
+                        ),
+                        (requester, addressee, now),
+                    )
+                return "pending_out" if current == "none" else current
 
     def get_friend_request(self, req_ref):
         """req_ref: '<requester>|<addressee>' (or a legacy numeric id,
@@ -1244,21 +1434,23 @@ class Database:
 
     def ban_user(self, username, reason=""):
         with self._lock:
-            row = self.backend.query_one(
-                "SELECT 1 AS ok FROM bans WHERE username = ?", (username,)
-            )
-            if row:
-                self.backend.execute(
-                    "UPDATE bans SET reason = ?, timestamp = ?"
-                    " WHERE username = ?",
-                    (reason, int(time.time() * 1000), username),
+            with self.backend.transaction():
+                row = self.backend.query_one(
+                    "SELECT 1 AS ok FROM bans WHERE username = ?",
+                    (username,),
                 )
-            else:
-                self.backend.execute(
-                    "INSERT INTO bans (username, reason, timestamp)"
-                    " VALUES (?, ?, ?)",
-                    (username, reason, int(time.time() * 1000)),
-                )
+                if row:
+                    self.backend.execute(
+                        "UPDATE bans SET reason = ?, timestamp = ?"
+                        " WHERE username = ?",
+                        (reason, int(time.time() * 1000), username),
+                    )
+                else:
+                    self.backend.execute(
+                        "INSERT INTO bans (username, reason, timestamp)"
+                        " VALUES (?, ?, ?)",
+                        (username, reason, int(time.time() * 1000)),
+                    )
 
     def unban_user(self, username):
         with self._lock:
@@ -1291,10 +1483,19 @@ class Database:
                     "UPDATE notification_seq SET seq = seq + 1"
                     " WHERE name = 'notifications'"
                 )
-                nid = self.backend.query_one(
+                row = self.backend.query_one(
                     "SELECT seq FROM notification_seq"
                     " WHERE name = 'notifications'"
-                )["seq"]
+                )
+                if row is None:
+                    # Self-heal a missing counter row.
+                    self.backend.execute(
+                        "INSERT INTO notification_seq (name, seq)"
+                        " VALUES ('notifications', 1)"
+                    )
+                    nid = 1
+                else:
+                    nid = row["seq"]
                 self.backend.execute(
                     "INSERT INTO notifications (nid, username, ntype, actor,"
                     " text, link, read, timestamp)"

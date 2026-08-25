@@ -611,13 +611,15 @@ def check_active_session():
     # - database wiped/replaced  -> no such user -> force logout.
     # - account deleted, someone re-registers the same name -> their new
     #   id differs from our session id -> old sessions are dead.
-    full = db.get_user_full(username)
+    # (Single combined query keeps this fast on remote databases.)
+    full, banned = db.get_user_with_ban(username)
+
     if full is None or full.get("id") != session.get("uid"):
         session.clear()
         return redirect("/login?deleted=1")
 
     # A banned user loses their session on the next request.
-    if db.is_banned(username):
+    if banned:
         session.clear()
         return redirect("/login?banned=1")
 
@@ -688,9 +690,9 @@ def login():
                 "and try again."
             )
         else:
-            user = db.get_user_full(username)
+            user, banned = db.get_user_with_ban(username)
 
-            if user and db.is_banned(username):
+            if user and banned:
                 error = "This account has been banned."
                 _login_record_failure(key)
             elif user and check_password_hash(
@@ -977,11 +979,13 @@ def chat():
 
         return redirect("/chat")
 
-    user_data = db.get_user(current) or {}
-
     messages = db.get_messages("global", "", 200)
 
     all_users = db.all_users()
+
+    # Reuse the fetched directory for our own sidebar data (saves a
+    # round trip on remote databases like Supabase).
+    user_data = all_users.get(current) or {}
 
     return render_template(
         "chat.html",
@@ -1053,7 +1057,7 @@ def dm(username):
 
     all_users = db.all_users()
 
-    current_user = db.get_user(me) or {}
+    current_user = all_users.get(me) or {}
 
     return render_template(
         "dm.html",
@@ -1371,7 +1375,7 @@ def group_chat(group_id):
 
     users = db.all_users()
 
-    user_data = db.get_user(current) or {}
+    user_data = users.get(current) or {}
 
     # Never expose the group's password hash to the client.
     safe_group = {
@@ -1566,7 +1570,7 @@ def forum():
 
     threads = db.list_forum_threads(viewer=current)
     users = db.all_users()
-    user_data = db.get_user(current) or {}
+    user_data = users.get(current) or {}
 
     return render_template(
         "forum.html",
@@ -1627,7 +1631,7 @@ def forum_thread(thread_id):
 
     replies = db.get_forum_replies(thread_id, viewer=current)
     users = db.all_users()
-    user_data = db.get_user(current) or {}
+    user_data = users.get(current) or {}
 
     return render_template(
         "forum_thread.html",
