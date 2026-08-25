@@ -1535,7 +1535,7 @@ except (ValueError, AttributeError):
 if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
-        port=3000,
+        port=80,
         threaded=True,
         use_reloader=False,
     )
