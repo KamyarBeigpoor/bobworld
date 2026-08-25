@@ -760,9 +760,16 @@ def publish_message(chat_type, chat_id, message):
 
 
 def push_notification(username, ntype, actor, text, link):
-    """Store a notification and instantly push it to the recipient if
-    they have an open notification stream."""
+    """
+    Always record the notification as unread AND push it live if the
+    recipient has an open stream. We deliberately do NOT suppress
+    notifications when the recipient appears to be viewing the
+    conversation: a just-closed tab's stream can linger server-side for
+    seconds, which previously swallowed DM notifications. Opening the
+    conversation clears its notifications anyway.
+    """
     nid = db.add_notification(username, ntype, actor, text, link)
+
     events.publish_notify(username, {
         "type": "notification",
         "id": nid,
@@ -856,16 +863,15 @@ def dm(username):
 
         publish_message("dm", key, message)
 
-        # Notify the recipient unless they are watching this conversation.
-        if not events.has_subscribers("dm", key):
-            preview = message.get("text") or "📎 sent an attachment"
-            push_notification(
-                username,
-                "dm",
-                me,
-                preview[:80],
-                f"/dm/{me}",
-            )
+        # Always record; badge only if they are not watching this chat.
+        preview = message.get("text") or "📎 sent an attachment"
+        push_notification(
+            username,
+            "dm",
+            me,
+            preview[:80],
+            f"/dm/{me}",
+        )
 
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify({
@@ -1160,19 +1166,18 @@ def group_chat(group_id):
 
         publish_message("group", group_id, message)
 
-        # Notify members who are not watching this group right now.
-        if not events.has_subscribers("group", group_id):
-            preview = message.get("text") or "📎 sent an attachment"
-            for member in group.get("members", []):
-                if member == current:
-                    continue
-                push_notification(
-                    member,
-                    "group",
-                    current,
-                    f"#{group['name']}: {preview[:70]}",
-                    f"/group/{group_id}",
-                )
+        # Always record per member; badge only if they are not watching.
+        preview = message.get("text") or "📎 sent an attachment"
+        for member in group.get("members", []):
+            if member == current:
+                continue
+            push_notification(
+                member,
+                "group",
+                current,
+                f"#{group['name']}: {preview[:70]}",
+                f"/group/{group_id}",
+            )
 
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify({

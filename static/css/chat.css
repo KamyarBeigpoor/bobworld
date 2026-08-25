@@ -16,7 +16,7 @@
    drawer. The forum thread view spans the full content width.
    ================================================================== */
 
-@import url("./win98.css");
+@import url("./win98.css?v=8");
 
 /* ================= DESIGN TOKENS ==================================
    Every rule below must consume these tokens only.
@@ -1576,6 +1576,22 @@ img {
         font-size: 13px;
     }
 
+    .app-switcher {
+        padding: 5px 6px;
+        gap: 5px;
+    }
+
+    .switch-btn {
+        padding: 5px 8px;
+        min-width: 0;
+        white-space: nowrap;
+        font-size: 11px;
+    }
+
+    .notif-bell {
+        min-width: 32px;
+    }
+
     .chat-messages {
         padding: 10px 10px 12px;
         gap: 8px;
@@ -1674,14 +1690,9 @@ img {
 /* ================= NOTIFICATIONS =================================== */
 
 .notif-wrap {
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-}
-
-.app-switcher {
-    position: relative; /* anchor for the bell dropdown */
+    position: relative;
+    flex-shrink: 0;
+    margin-left: auto; /* sits at the far end, IN the flow — never overlaps */
 }
 
 .notif-bell {
