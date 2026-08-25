@@ -67,6 +67,59 @@ app.secret_key = os.environ.get(
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 
+# ============================================================
+# DEPLOYMENT SELF-CHECK
+#
+# Fail immediately (with a readable list) if the app was not
+# fully copied/deployed — e.g. a Render/Git checkout missing
+# templates/ produces 'TemplateNotFound' 500s on every request,
+# which is much harder to debug than this one clear error.
+# ============================================================
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+REQUIRED_FILES = (
+    # templates
+    "templates/login.html",
+    "templates/signup.html",
+    "templates/chat.html",
+    "templates/dm.html",
+    "templates/users.html",
+    "templates/groups.html",
+    "templates/group_chat.html",
+    "templates/join_group.html",
+    "templates/forum.html",
+    "templates/forum_thread.html",
+    "templates/profile.html",
+    "templates/user_profile.html",
+    "templates/_topbar.html",
+    # backend module
+    "database.py",
+    # stylesheets + fonts + scripts
+    "static/css/chat.css",
+    "static/css/win98.css",
+    "static/css/videoplayer.css",
+    "static/js/chat.js",
+    "static/js/video-player.js",
+    "static/css/ms_sans_serif.woff2",
+    "static/css/ms_sans_serif_bold.woff2",
+)
+
+_missing = [
+    name
+    for name in REQUIRED_FILES
+    if not os.path.exists(os.path.join(BASE_DIR, name))
+]
+
+if _missing:
+    raise RuntimeError(
+        "bobworld is missing required files on this server "
+        "(the deployment did not include the full app folder):\n  - "
+        + "\n  - ".join(_missing)
+        + "\nCopy/commit the ENTIRE app folder (especially templates/ "
+        "and static/) and redeploy."
+    )
+
 
 # ============================================================
 # DIRECTORIES
@@ -1535,7 +1588,7 @@ except (ValueError, AttributeError):
 if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
-        port=80,
+        port=3000,
         threaded=True,
         use_reloader=False,
     )
