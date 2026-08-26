@@ -78,6 +78,7 @@
 
     initAvatarPreview();
     initProfileUploadProgress();
+    initFriendRequestForms();
     initProfileLinks();
 
     // Group-specific admin buttons
@@ -376,7 +377,16 @@
     if (document.querySelector(`.message[data-message-id="${msg.id}"]`)) return;
 
     const div = document.createElement("div");
-    div.className = `message ${isOwn ? "sent" : "received"}`;
+    // Pure video messages render without a bubble: the player itself
+    // is the bubble (matches the server-side .video-msg logic).
+    const isVideoOnly =
+      msg.file &&
+      isVideoFile(msg.file) &&
+      !(msg.text || "").trim() &&
+      !msg.reply;
+    div.className = `message ${isOwn ? "sent" : "received"}${
+      isVideoOnly ? " video-msg" : ""
+    }`;
     div.setAttribute("data-from", msg.from);
     div.setAttribute("data-timestamp", msg.timestamp);
     div.setAttribute("data-message-id", msg.id);
@@ -871,6 +881,74 @@
         }
       });
     }
+  }
+
+  // ========== TOAST + FRIEND REQUESTS ==========
+  let toastTimer = null;
+
+  function showToast(message) {
+    let t = document.getElementById("toast");
+    if (!t) {
+      t = document.createElement("div");
+      t.id = "toast";
+      t.className = "toast";
+      document.body.appendChild(t);
+    }
+    t.textContent = message;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), 2500);
+  }
+
+  function replaceWithPill(form, text) {
+    const pill = document.createElement("span");
+    pill.className = "pill";
+    pill.textContent = text;
+    form.replaceWith(pill);
+  }
+
+  function initFriendRequestForms() {
+    document.querySelectorAll("form[data-friend-request]").forEach((form) => {
+      if (form.dataset.friendBound) return;
+      form.dataset.friendBound = "true";
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const btn = form.querySelector("button");
+        if (btn) btn.disabled = true;
+
+        try {
+          // Same-window request: no page reload, no redirect.
+          const resp = await fetch(form.action, {
+            method: "POST",
+            body: new FormData(form),
+            headers: {
+              "X-Requested-With": "XMLHttpRequest",
+              Accept: "application/json",
+            },
+          });
+          const data = await resp.json().catch(() => ({}));
+
+          if (!resp.ok || data.error) {
+            showToast(data.error || "Could not send the request.");
+            if (btn) btn.disabled = false;
+            return;
+          }
+
+          if (data.result === "friends") {
+            replaceWithPill(form, "✅ Friends");
+            showToast("Friend request accepted!");
+          } else {
+            replaceWithPill(form, "⏳ Requested");
+            showToast("Friend request sent!");
+          }
+        } catch (err) {
+          showToast("Network error.");
+          if (btn) btn.disabled = false;
+        }
+      });
+    });
   }
 
   // ========== GROUP ADMIN CONTROLS ==========

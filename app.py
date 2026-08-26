@@ -1823,12 +1823,20 @@ def friend_request_route(username):
 
     me = session["user"]
 
+    # AJAX callers get JSON back so the page never has to reload.
+    ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
     if not db.user_exists(username):
-        return jsonify({"error": "User not found"}), 404
+        if ajax:
+            return jsonify({"error": "User not found"}), 404
+        return redirect("/users")
 
     try:
         result = db.send_friend_request(me, username)
     except ValueError as exc:
+        # e.g. "Request already sent." / "You are already friends."
+        if ajax:
+            return jsonify({"error": str(exc)}), 400
         return redirect("/users")
 
     if result == "pending_out":
@@ -1839,6 +1847,11 @@ def friend_request_route(username):
             f"{me} sent you a friend request.",
             "/friends",
         )
+
+    if ajax:
+        # result: 'pending_out' (request delivered) or
+        # 'friends' (mutual add -> auto-accepted)
+        return jsonify({"status": "ok", "result": result})
 
     return redirect(safe_redirect_target(
         request.form.get("next"), "/users"

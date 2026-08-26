@@ -2203,3 +2203,79 @@ img {
     box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.3);
     transition: width 0.15s ease-out;
 }
+/* ========== DARK SCROLLBAR ========== */
+/* win98.css only ships the light scrollbar; these overrides give dark
+   mode a matching flat-dark track, beveled dark thumb and no arrow
+   buttons (their light SVG sprites cannot be recolored). */
+[data-theme="dark"] ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+[data-theme="dark"] ::-webkit-scrollbar-track {
+    background-color: var(--field);
+    background-image: none;
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+    background-color: var(--face-light);
+    box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #55606d,
+        inset -2px -2px var(--mid), inset 2px 2px rgba(255, 255, 255, 0.08);
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--button-face);
+}
+[data-theme="dark"] ::-webkit-scrollbar-corner {
+    background: var(--field);
+}
+[data-theme="dark"] ::-webkit-scrollbar-button {
+    display: none;
+}
+/* Firefox */
+[data-theme="dark"] {
+    scrollbar-color: var(--face-light) var(--field);
+}
+
+/* ========== VIDEO MESSAGE = PLAYER ITSELF ========== */
+/* Pure video messages drop the bubble chrome entirely so the retro
+   player IS the bubble; a slim timestamp stays underneath. */
+.message.video-msg .bubble {
+    background: transparent;
+    padding: 0;
+    box-shadow: none;
+    max-width: min(75%, 340px);
+}
+
+.message.video-msg .sender,
+.message.video-msg .text {
+    display: none;
+}
+
+.message.video-msg .time {
+    font-size: 0.6rem;
+    opacity: 0.65;
+    text-align: right;
+    margin-top: 2px;
+}
+
+/* ========== TOAST ========== */
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%) translateY(16px);
+    background: var(--surface);
+    color: var(--text);
+    border: var(--border-width) outset var(--button-face);
+    box-shadow: var(--bevel-out);
+    padding: 8px 14px;
+    font-size: 0.75rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+    z-index: 9999;
+    white-space: nowrap;
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}

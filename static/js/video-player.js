@@ -67,13 +67,13 @@ class RetroVideoPlayer {
 
     // Mute button
     this.muteBtn = document.createElement("button");
-    this.muteBtn.className = "retro-video-btn";
+    this.muteBtn.className = "retro-video-btn retro-video-btn-sm";
     this.muteBtn.innerHTML = "🔊";
     this.muteBtn.title = "Mute";
 
     // Fullscreen button
     this.fullscreenBtn = document.createElement("button");
-    this.fullscreenBtn.className = "retro-video-btn";
+    this.fullscreenBtn.className = "retro-video-btn retro-video-btn-sm";
     this.fullscreenBtn.innerHTML = "⛶";
     this.fullscreenBtn.title = "Fullscreen";
 

@@ -11,8 +11,8 @@
             rel="icon"
             href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
         />
-        <link rel="stylesheet" href="/static/css/chat.css?v=10" />
-        <link rel="stylesheet" href="/static/css/videoplayer.css?v=9" />
+        <link rel="stylesheet" href="/static/css/chat.css?v=11" />
+        <link rel="stylesheet" href="/static/css/videoplayer.css?v=10" />
     </head>
     <body
         data-user="{{ user }}"
@@ -97,7 +97,8 @@
                 <div class="chat-messages" id="chatMessages">
                     {% for m in messages %}
                     <div
-                        class="message {{ 'sent' if m.from == user else 'received' }}"
+                        {% set m_is_video = m.file and m.file.lower().endswith(('.mp4','.webm','.mov','.ogg','.m4v')) %}
+                        class="message {{ 'sent' if m.from == user else 'received' }}{% if m_is_video and not m.text and not m.reply %} video-msg{% endif %}"
                         data-from="{{ m.from }}"
                         data-timestamp="{{ m.timestamp }}"
                         data-message-id="{{ m.id }}"
@@ -228,7 +229,7 @@
             window.USERS_DATA = {{ users|tojson }};
         </script>
         <script src="/static/js/socket.io.min.js?v=1"></script>
-        <script src="/static/js/video-player.js?v=9"></script>
-        <script src="/static/js/chat.js?v=12"></script>
+        <script src="/static/js/video-player.js?v=10"></script>
+        <script src="/static/js/chat.js?v=13"></script>
     </body>
 </html>
