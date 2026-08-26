@@ -106,19 +106,30 @@ class RetroVideoPlayer {
       this.updateTimeDisplay(),
     );
 
-    // Progress bar seeking
-    this.progressBar.addEventListener("mousedown", (e) => {
+    // Progress bar seeking - pointer events cover mouse, touch and pen.
+    // setPointerCapture keeps the drag alive even when the pointer
+    // leaves the bar (otherwise finger drags on mobile get lost).
+    this.progressBar.addEventListener("pointerdown", (e) => {
       this.isDraggingProgress = true;
+      if (this.progressBar.setPointerCapture) {
+        try {
+          this.progressBar.setPointerCapture(e.pointerId);
+        } catch (err) {
+          /* older browsers */
+        }
+      }
       this.seekToPosition(e);
     });
-    document.addEventListener("mousemove", (e) => {
+    this.progressBar.addEventListener("pointermove", (e) => {
       if (this.isDraggingProgress) {
         this.seekToPosition(e);
       }
     });
-    document.addEventListener("mouseup", () => {
-      this.isDraggingProgress = false;
-    });
+    ["pointerup", "pointercancel"].forEach((type) =>
+      this.progressBar.addEventListener(type, () => {
+        this.isDraggingProgress = false;
+      }),
+    );
 
     // Mute toggle
     this.muteBtn.addEventListener("click", () => this.toggleMute());

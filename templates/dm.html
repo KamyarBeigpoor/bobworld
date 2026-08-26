@@ -11,8 +11,8 @@
             rel="icon"
             href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
         />
-        <link rel="stylesheet" href="/static/css/chat.css?v=9" />
-        <link rel="stylesheet" href="/static/css/videoplayer.css?v=8" />
+        <link rel="stylesheet" href="/static/css/chat.css?v=10" />
+        <link rel="stylesheet" href="/static/css/videoplayer.css?v=9" />
     </head>
     <body
         data-user="{{ user }}"
@@ -154,23 +154,38 @@
                             {% endif %}
                             <div class="text">{{ m.text }}</div>
                             {% if m.file %}
+                            {% if
+                            m.file.lower().endswith(('.png','.jpg','.jpeg','.gif','.bmp','.webp'))
+                            %}
                             <div class="attachment">
-                                {% if
-                                m.file.lower().endswith(('.png','.jpg','.jpeg','.gif','.bmp','.webp'))
-                                %}
                                 <img
                                     src="/uploads/{{ m.file }}"
                                     alt="image"
                                     loading="lazy"
                                     onclick="window.open(this.src)"
                                 />
-                                {% else %}
-                                <a href="/uploads/{{ m.file }}" target="_blank"
-                                    >📎 {{ m.file.split('_',1)[1] if '_' in
+                            </div>
+                            {% elif
+                            m.file.lower().endswith(('.mp4','.webm','.mov','.ogg','.m4v'))
+                            %}
+                            {# Upgraded to a retro video player by
+                               chat.js on load; without this videos
+                               degrade to plain links after reload #}
+                            <div
+                                class="attachment"
+                                data-video-src="/uploads/{{ m.file }}"
+                            ></div>
+                            {% else %}
+                            <div class="attachment">
+                                <a
+                                    href="/uploads/{{ m.file }}"
+                                    target="_blank"
+                                    >📎 {{
+                                    m.file.split('_',1)[1] if '_' in
                                     m.file else m.file }}</a
                                 >
-                                {% endif %}
                             </div>
+                            {% endif %}
                             {% endif %}
                             <div class="time"></div>
                         </div>
@@ -216,7 +231,7 @@
             window.USERS_DATA = {{ users|tojson }};
         </script>
         <script src="/static/js/socket.io.min.js?v=1"></script>
-        <script src="/static/js/video-player.js?v=8"></script>
-        <script src="/static/js/chat.js?v=10"></script>
+        <script src="/static/js/video-player.js?v=9"></script>
+        <script src="/static/js/chat.js?v=12"></script>
     </body>
 </html>

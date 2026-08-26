@@ -77,6 +77,7 @@
     }
 
     initAvatarPreview();
+    initProfileUploadProgress();
     initProfileLinks();
 
     // Group-specific admin buttons
@@ -85,6 +86,7 @@
     }
 
     if (isChatPage) {
+      initChatUploadProgress();
       let viewportHeight = window.innerHeight;
       window.addEventListener("resize", () => {
         const keyboardOpen = window.innerHeight < viewportHeight - 150;
@@ -484,46 +486,174 @@
     scrollToBottom();
   }
 
-  async function sendMessage(formData) {
-    if (activeReply) {
-      const replyPayload = {
-        from: activeReply.from,
-        text: activeReply.text || "",
-        file: activeReply.file || null,
-        timestamp: activeReply.timestamp,
-      };
-      formData.append("reply_data", JSON.stringify(replyPayload));
-    }
+  // ========== UPLOAD PROGRESS ==========
+  function buildProgressBar(parent, before) {
+    const wrap = document.createElement("div");
+    wrap.className = "upload-progress";
+    wrap.style.display = "none";
 
-    try {
+    const label = document.createElement("div");
+    label.className = "upload-progress-label";
+    label.textContent = "Uploading… 0%";
+
+    const bar = document.createElement("div");
+    bar.className = "upload-progress-bar";
+
+    const fill = document.createElement("div");
+    fill.className = "upload-progress-fill";
+
+    bar.appendChild(fill);
+    wrap.appendChild(label);
+    wrap.appendChild(bar);
+
+    if (before) parent.insertBefore(wrap, before);
+    else parent.insertBefore(wrap, parent.firstChild);
+
+    return {
+      set(percent, text) {
+        const p = Math.max(0, Math.min(100, percent));
+        wrap.style.display = "block";
+        fill.style.width = p + "%";
+        label.textContent =
+          text || `Uploading… ${Math.round(p)}%`;
+      },
+      hide() {
+        wrap.style.display = "none";
+        fill.style.width = "0%";
+      },
+    };
+  }
+
+  function initChatUploadProgress() {
+    if (!window.__chatUploadBar && messageForm) {
+      const footer = messageForm.closest(".chat-footer") || document.body;
+      window.__chatUploadBar = buildProgressBar(footer);
+    }
+  }
+
+  function initProfileUploadProgress() {
+    const form = document.getElementById("profileForm");
+    if (!form || form.dataset.progressBound) return;
+    form.dataset.progressBound = "true";
+
+    const fileInput = form.querySelector('input[type="file"]');
+    const saveBtn = form.querySelector(".save-btn");
+    const anchor = saveBtn || null;
+    const bar = buildProgressBar(form, anchor);
+
+    form.addEventListener("submit", (e) => {
+      // Only take over the submit when a new avatar is actually being
+      // uploaded; plain text edits keep the fast normal POST.
+      if (!fileInput || !fileInput.files[0]) return;
+      e.preventDefault();
+
+      if (saveBtn) saveBtn.disabled = true;
+      bar.set(0, "Uploading avatar…");
+
+      const fail = (msg) => {
+        bar.hide();
+        if (saveBtn) saveBtn.disabled = false;
+        alert(msg);
+      };
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", form.action || window.location.pathname);
+
+      xhr.upload.addEventListener("progress", (ev) => {
+        if (ev.lengthComputable) {
+          bar.set((ev.loaded / ev.total) * 100, "Uploading avatar…");
+        }
+      });
+
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 400) {
+          bar.set(100, "Done!");
+          // Server redirected back to /profile; reload shows the
+          // updated avatar.
+          window.location.reload();
+        } else if (xhr.status === 400) {
+          fail("Invalid avatar file.");
+        } else {
+          fail("Upload failed. Please try again.");
+        }
+      });
+
+      xhr.addEventListener("error", () =>
+        fail("Network error while uploading."),
+      );
+
+      xhr.send(new FormData(form));
+    });
+  }
+
+  function sendMessage(formData) {
+    const hasFile = formData.get("file") instanceof File;
+    const bar = hasFile ? window.__chatUploadBar : null;
+
+    return new Promise((resolve) => {
+      if (activeReply) {
+        const replyPayload = {
+          from: activeReply.from,
+          text: activeReply.text || "",
+          file: activeReply.file || null,
+          timestamp: activeReply.timestamp,
+        };
+        formData.append("reply_data", JSON.stringify(replyPayload));
+      }
+
       let url;
       if (CHAT_TYPE === "global") url = "/chat";
       else if (CHAT_TYPE === "dm") url = `/dm/${CHAT_USER}`;
       else if (CHAT_TYPE === "group") url = `/group/${GROUP_ID}`;
-      const resp = await fetch(url, {
-        method: "POST",
-        body: formData,
-        headers: { "X-Requested-With": "XMLHttpRequest" },
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        messageInput.value = "";
-        fileInput.value = "";
-        messageInput.placeholder = getPlaceholderText();
-        messageInput.focus();
-        clearReplyPreview();
-        if (messageInput.tagName === "TEXTAREA") {
-          messageInput.style.height = "auto";
+
+      const finish = (data) => {
+        if (bar) bar.hide();
+        if (data) {
+          messageInput.value = "";
+          fileInput.value = "";
+          messageInput.placeholder = getPlaceholderText();
+          messageInput.focus();
+          clearReplyPreview();
+          if (messageInput.tagName === "TEXTAREA") {
+            messageInput.style.height = "auto";
+          }
         }
-        return data;
-      } else {
-        alert("Failed to send message.");
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Network error.");
-    }
-    return null;
+        resolve(data);
+      };
+
+      // XHR instead of fetch so we get real upload progress events.
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", url);
+      xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+
+      xhr.upload.addEventListener("progress", (e) => {
+        if (bar && e.lengthComputable) {
+          bar.set((e.loaded / e.total) * 100);
+        }
+      });
+
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          let data = null;
+          try {
+            data = JSON.parse(xhr.responseText);
+          } catch (err) {
+            data = null;
+          }
+          finish(data);
+        } else {
+          alert("Failed to send message.");
+          finish(null);
+        }
+      });
+
+      xhr.addEventListener("error", () => {
+        alert("Network error.");
+        finish(null);
+      });
+
+      xhr.send(formData);
+    });
   }
 
   function getPlaceholderText() {
@@ -619,6 +749,12 @@
     const file = fileInput.files[0];
     if (!msgText && !file) return;
 
+    // Re-focus synchronously INSIDE the user gesture. Tapping Send
+    // moves focus off the textarea, which collapses the on-screen
+    // keyboard until the response arrives; grabbing focus here (and
+    // via the pointerdown guard below) keeps it open throughout.
+    messageInput.focus();
+
     const formData = new FormData();
     if (msgText) formData.append("message", msgText);
     if (file) formData.append("file", file);
@@ -712,6 +848,12 @@
 
   function setupEventListeners() {
     if (messageForm) messageForm.addEventListener("submit", handleSubmit);
+    if (sendBtn && messageInput) {
+      // Stop the Send button from stealing focus on press. Without
+      // this, tapping it blurs the textarea and the mobile keyboard
+      // closes for the duration of the request.
+      sendBtn.addEventListener("pointerdown", (e) => e.preventDefault());
+    }
     if (messageInput) {
       messageInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {

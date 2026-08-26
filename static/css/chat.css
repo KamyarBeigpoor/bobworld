@@ -2168,3 +2168,38 @@ img {
     background: #b00000;
     filter: brightness(1.05);
 }
+42618
+
+/* ========== UPLOAD PROGRESS ========== */
+.upload-progress {
+    padding: 4px 6px;
+    background: var(--surface);
+    border: var(--border-width) inset var(--button-face);
+    margin-bottom: 4px;
+}
+
+.upload-progress-label {
+    font-size: 0.65rem;
+    color: var(--text);
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.upload-progress-bar {
+    height: 12px;
+    background: var(--surface);
+    border: var(--border-width) inset var(--button-face);
+    box-shadow: var(--shadow-inset);
+    position: relative;
+    overflow: hidden;
+}
+
+.upload-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--header-gradient);
+    box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.3);
+    transition: width 0.15s ease-out;
+}
