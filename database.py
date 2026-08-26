@@ -1386,14 +1386,19 @@ class Database:
             )
 
     def list_friends(self, username):
+        # NOTE: the CASE expression must be repeated inside ORDER BY.
+        # PostgreSQL cannot use the SELECT alias ("friend") within the
+        # expression LOWER(...), even though SQLite accepts it -
+        # mixing the two silently broke /friends on Supabase.
         with self._lock:
             rows = self.backend.query(
                 "SELECT CASE WHEN requester = ? THEN addressee"
                 " ELSE requester END AS friend FROM friendships"
                 " WHERE status = 'accepted'"
                 " AND (requester = ? OR addressee = ?)"
-                " ORDER BY LOWER(friend)",
-                (username, username, username),
+                " ORDER BY LOWER(CASE WHEN requester = ? THEN addressee"
+                " ELSE requester END)",
+                (username, username, username, username),
             )
         return [r["friend"] for r in rows]
 
