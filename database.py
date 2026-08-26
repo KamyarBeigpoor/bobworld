@@ -193,6 +193,10 @@ class SQLiteBackend:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
+        # Wait instead of failing instantly when another process (e.g. a
+        # second accidental app instance) holds the write lock; without
+        # this such collisions surface as random 500 errors.
+        self._conn.execute("PRAGMA busy_timeout=10000")
         self._tx_depth = 0
 
     def execute(self, sql, params=()):
