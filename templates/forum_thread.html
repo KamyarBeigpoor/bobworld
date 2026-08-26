@@ -6,10 +6,10 @@
             name="viewport"
             content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
         />
-        <title>{{ thread.title }} • bobworld Forum</title>
+        <title>{{ thread.title }} â€¢ bobworld Forum</title>
         <link
             rel="icon"
-            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
+            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>ðŸ’¬</text></svg>"
         />
         <link rel="stylesheet" href="/static/css/chat.css?v=9" />
     </head>
@@ -33,19 +33,19 @@
                             <p class="username">@{{ user }}</p>
                         </div>
                     </div>
-                    <a href="/profile" class="edit-profile">✏️ Edit Profile</a>
+                    <a href="/profile" class="edit-profile">âœï¸ Edit Profile</a>
                 </div>
                 <nav class="sidebar-nav">
-                    <a href="/chat" class="nav-item">🌍 Global Chat</a>
+                    <a href="/chat" class="nav-item">ðŸŒ Global Chat</a>
                     <a href="/friends" class="nav-item">
-                        🫂 Friends</a
+                        ðŸ«‚ Friends</a
                     >
-                    <a href="/users" class="nav-item">👥 Users</a>
-                    <a href="/groups" class="nav-item">🏡 Groups</a>
+                    <a href="/users" class="nav-item">ðŸ‘¥ Users</a>
+                    <a href="/groups" class="nav-item">ðŸ¡ Groups</a>
                     <button id="themeToggle" class="nav-item">
-                        🌓 Dark/Light
+                        ðŸŒ“ Dark/Light
                     </button>
-                    <a href="/logout" class="nav-item logout">🚪 Logout</a>
+                    <a href="/logout" class="nav-item logout">ðŸšª Logout</a>
                 </nav>
                 <div class="sidebar-footer">
                     <p class="bio">
@@ -56,7 +56,7 @@
 
             <main class="chat-main">
                 <header class="chat-header">
-                    <button class="hamburger" id="hamburgerBtn">☰</button>
+                    <button class="hamburger" id="hamburgerBtn">â˜°</button>
                     <h2>{{ thread.title }}</h2>
                     <div class="group-admin-controls">
                         {% if thread.author == user or is_mod %}
@@ -71,7 +71,7 @@
                                 class="admin-btn danger"
                                 title="Delete thread"
                             >
-                                🗑️
+                                ðŸ—‘ï¸
                             </button>
                         </form>
                         {% endif %}
@@ -84,7 +84,7 @@
                 <div class="forum-container">
                     <p style="margin: 0 0 14px">
                         <a href="/forum" class="back-btn btn-inline"
-                            >⬅ Back to all threads</a
+                            >â¬… Back to all threads</a
                         >
                     </p>
 
@@ -174,7 +174,7 @@
                                     data-vote="1"
                                     title="Like"
                                 >
-                                    👍
+                                    ðŸ‘
                                     <span class="like-count"
                                         >{{ node.likes }}</span
                                     >
@@ -189,7 +189,7 @@
                                     data-vote="-1"
                                     title="Dislike"
                                 >
-                                    👎
+                                    ðŸ‘Ž
                                     <span class="dislike-count"
                                         >{{ node.dislikes }}</span
                                     >
@@ -201,7 +201,7 @@
                                         'op' if is_op else node.id
                                     }}"
                                 >
-                                    ↩ Reply
+                                    â†© Reply
                                 </button>
                             </div>
 
@@ -233,7 +233,7 @@
                                     </div>
                                     <div class="form-group">
                                         <label class="avatar-upload-btn">
-                                            🖼️ Image
+                                            ðŸ–¼ï¸ Image
                                             <input
                                                 type="file"
                                                 name="image"
@@ -242,7 +242,7 @@
                                             />
                                         </label>
                                         <div class="file-hint">
-                                            PNG/JPG/GIF/WebP — optional
+                                            PNG/JPG/GIF/WebP â€” optional
                                         </div>
                                     </div>
                                     <div class="inline-reply-actions">
@@ -409,6 +409,7 @@
                 });
             });
         </script>
-        <script src="/static/js/chat.js?v=9"></script>
+        <script src="/static/js/socket.io.min.js?v=1"></script>
+        <script src="/static/js/chat.js?v=10"></script>
     </body>
 </html>

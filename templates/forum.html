@@ -6,10 +6,10 @@
             name="viewport"
             content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
         />
-        <title>bobworld • Forum</title>
+        <title>bobworld â€¢ Forum</title>
         <link
             rel="icon"
-            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
+            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>ðŸ’¬</text></svg>"
         />
         <link rel="stylesheet" href="/static/css/chat.css?v=9" />
     </head>
@@ -33,19 +33,19 @@
                             <p class="username">@{{ user }}</p>
                         </div>
                     </div>
-                    <a href="/profile" class="edit-profile">✏️ Edit Profile</a>
+                    <a href="/profile" class="edit-profile">âœï¸ Edit Profile</a>
                 </div>
                 <nav class="sidebar-nav">
-                    <a href="/chat" class="nav-item">🌍 Global Chat</a>
+                    <a href="/chat" class="nav-item">ðŸŒ Global Chat</a>
                     <a href="/friends" class="nav-item">
-                        🫂 Friends</a
+                        ðŸ«‚ Friends</a
                     >
-                    <a href="/users" class="nav-item">👥 Users</a>
-                    <a href="/groups" class="nav-item">🏡 Groups</a>
+                    <a href="/users" class="nav-item">ðŸ‘¥ Users</a>
+                    <a href="/groups" class="nav-item">ðŸ¡ Groups</a>
                     <button id="themeToggle" class="nav-item">
-                        🌓 Dark/Light
+                        ðŸŒ“ Dark/Light
                     </button>
-                    <a href="/logout" class="nav-item logout">🚪 Logout</a>
+                    <a href="/logout" class="nav-item logout">ðŸšª Logout</a>
                 </nav>
                 <div class="sidebar-footer">
                     <p class="bio">
@@ -56,8 +56,8 @@
 
             <main class="chat-main">
                 <header class="chat-header">
-                    <button class="hamburger" id="hamburgerBtn">☰</button>
-                    <h2>📋 Forum</h2>
+                    <button class="hamburger" id="hamburgerBtn">â˜°</button>
+                    <h2>ðŸ“‹ Forum</h2>
                     <div class="placeholder"></div>
                 </header>
 
@@ -67,7 +67,7 @@
                 <div class="forum-container">
                     <details class="create-panel">
                         <summary class="create-toggle"
-                            >➕ New Thread</summary
+                            >âž• New Thread</summary
                         >
                         <form
                             class="create-body forum-form"
@@ -96,7 +96,7 @@
                             </div>
                             <div class="form-group">
                                 <label class="avatar-upload-btn">
-                                    🖼️ Attach image
+                                    ðŸ–¼ï¸ Attach image
                                     <input
                                         type="file"
                                         name="image"
@@ -107,7 +107,7 @@
                                 <div class="file-hint">PNG, JPG, GIF or WebP</div>
                             </div>
                             <button type="submit" class="save-btn btn-inline">
-                                📋 Post Thread
+                                ðŸ“‹ Post Thread
                             </button>
                         </form>
                     </details>
@@ -135,7 +135,7 @@
                                 >
                                 {% if t.image %}
                                 <span class="paperclip" title="has image"
-                                    >🖼️</span
+                                    >ðŸ–¼ï¸</span
                                 >
                                 {% endif %}
                                 {% if t.body %}
@@ -150,7 +150,7 @@
                                     users.get(t.author,
                                     {}).get('display_name', t.author)
                                     }}
-                                    • {{ t.timestamp|ts }}
+                                    â€¢ {{ t.timestamp|ts }}
                                 </div>
                             </div>
                             <div class="row-replies">
@@ -160,7 +160,7 @@
                                     }}</span>
                             </div>
                             <div class="row-votes">
-                                👍 {{ t.likes }}<br />👎 {{ t.dislikes }}
+                                ðŸ‘ {{ t.likes }}<br />ðŸ‘Ž {{ t.dislikes }}
                             </div>
                             <div class="row-activity">
                                 {{ t.last_activity|ts }}
@@ -184,6 +184,7 @@
                 avatar: "{{ avatar }}"
             };
         </script>
-        <script src="/static/js/chat.js?v=9"></script>
+        <script src="/static/js/socket.io.min.js?v=1"></script>
+        <script src="/static/js/chat.js?v=10"></script>
     </body>
 </html>

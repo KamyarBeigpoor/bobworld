@@ -6,10 +6,10 @@
             name="viewport"
             content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
         />
-        <title>bobworld • Groups</title>
+        <title>bobworld â€¢ Groups</title>
         <link
             rel="icon"
-            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
+            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>ðŸ’¬</text></svg>"
         />
         <link rel="stylesheet" href="/static/css/chat.css?v=9" />
         <style>
@@ -142,19 +142,19 @@
                             <p class="username">@{{ user }}</p>
                         </div>
                     </div>
-                    <a href="/profile" class="edit-profile">✏️ Edit Profile</a>
+                    <a href="/profile" class="edit-profile">âœï¸ Edit Profile</a>
                 </div>
                 <nav class="sidebar-nav">
-                    <a href="/chat" class="nav-item">🌍 Global Chat</a>
+                    <a href="/chat" class="nav-item">ðŸŒ Global Chat</a>
                     <a href="/friends" class="nav-item">
-                        🫂 Friends</a
+                        ðŸ«‚ Friends</a
                     >
-                    <a href="/users" class="nav-item">👥 Users</a>
-                    <a href="/groups" class="nav-item active">🏡 Groups</a>
+                    <a href="/users" class="nav-item">ðŸ‘¥ Users</a>
+                    <a href="/groups" class="nav-item active">ðŸ¡ Groups</a>
                     <button id="themeToggle" class="nav-item">
-                        🌓 Dark/Light
+                        ðŸŒ“ Dark/Light
                     </button>
-                    <a href="/logout" class="nav-item logout">🚪 Logout</a>
+                    <a href="/logout" class="nav-item logout">ðŸšª Logout</a>
                 </nav>
                 <div class="sidebar-footer">
                     <p class="bio">
@@ -166,7 +166,7 @@
 
             <main class="chat-main">
                 <header class="chat-header">
-                    <button class="hamburger" id="hamburgerBtn">☰</button>
+                    <button class="hamburger" id="hamburgerBtn">â˜°</button>
                     <h2>All Groups</h2>
                     <div class="placeholder"></div>
                 </header>
@@ -181,7 +181,7 @@
 
                     <details class="create-panel">
                         <summary class="create-toggle"
-                            >➕ Create Group</summary
+                            >âž• Create Group</summary
                         >
                         <form
                             class="create-body"
@@ -211,7 +211,7 @@
                                 />
                             </div>
                             <button type="submit" class="save-btn btn-inline">
-                                🏡 Create Group
+                                ðŸ¡ Create Group
                             </button>
                         </form>
                     </details>
@@ -227,7 +227,7 @@
                             </div>
                             <div class="group-status">
                                 {% if group.is_member %}
-                                <span class="member-badge">✓ Member</span>
+                                <span class="member-badge">âœ“ Member</span>
                                 {% endif %}
                             </div>
                             <div class="group-actions">
@@ -299,7 +299,8 @@
             };
             window.USERS_DATA = {{ users|tojson }};
         </script>
-        <script src="/static/js/chat.js?v=9"></script>
+        <script src="/static/js/socket.io.min.js?v=1"></script>
+        <script src="/static/js/chat.js?v=10"></script>
         <script>
             (function () {
                 // Handle Join button clicks
@@ -351,15 +352,15 @@
                                 window.location.href = `/group/${groupId}`;
                             } else if (resp.status === 403) {
                                 errBox.textContent =
-                                    "⚠️ Incorrect password. Please try again.";
+                                    "âš ï¸ Incorrect password. Please try again.";
                                 errBox.hidden = false;
                             } else {
                                 errBox.textContent =
-                                    "⚠️ Could not join this group.";
+                                    "âš ï¸ Could not join this group.";
                                 errBox.hidden = false;
                             }
                         } catch (err) {
-                            errBox.textContent = "⚠️ Network error.";
+                            errBox.textContent = "âš ï¸ Network error.";
                             errBox.hidden = false;
                         }
                     });

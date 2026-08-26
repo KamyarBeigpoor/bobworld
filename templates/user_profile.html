@@ -6,10 +6,10 @@
             name="viewport"
             content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
         />
-        <title>{{ profile.get('display_name', username) }} • bobworld</title>
+        <title>{{ profile.get('display_name', username) }} â€¢ bobworld</title>
         <link
             rel="icon"
-            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
+            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>ðŸ’¬</text></svg>"
         />
         <link rel="stylesheet" href="/static/css/chat.css?v=9" />
     </head>
@@ -38,19 +38,19 @@
                             <p class="username">@{{ user|default('guest') }}</p>
                         </div>
                     </div>
-                    <a href="/profile" class="edit-profile">✏️ Edit Profile</a>
+                    <a href="/profile" class="edit-profile">âœï¸ Edit Profile</a>
                 </div>
                 <nav class="sidebar-nav">
-                    <a href="/chat" class="nav-item">🌍 Global Chat</a>
+                    <a href="/chat" class="nav-item">ðŸŒ Global Chat</a>
                     <a href="/friends" class="nav-item">
-                        🫂 Friends</a
+                        ðŸ«‚ Friends</a
                     >
-                    <a href="/users" class="nav-item active">👥 Users</a>
-                    <a href="/groups" class="nav-item">🏡 Groups</a>
+                    <a href="/users" class="nav-item active">ðŸ‘¥ Users</a>
+                    <a href="/groups" class="nav-item">ðŸ¡ Groups</a>
                     <button id="themeToggle" class="nav-item">
-                        🌓 Dark/Light
+                        ðŸŒ“ Dark/Light
                     </button>
-                    <a href="/logout" class="nav-item logout">🚪 Logout</a>
+                    <a href="/logout" class="nav-item logout">ðŸšª Logout</a>
                 </nav>
                 <div class="sidebar-footer">
                     <p class="bio">
@@ -62,7 +62,7 @@
             <!-- Main content -->
             <main class="profile-main">
                 <header class="chat-header">
-                    <button class="hamburger" id="hamburgerBtn">☰</button>
+                    <button class="hamburger" id="hamburgerBtn">â˜°</button>
                     <h2>
                         {{ profile.get('display_name', username) }}'s Profile
                     </h2>
@@ -92,16 +92,16 @@
                         <h2 class="profile-display-name">
                             {{ profile.get('display_name', username) }}
                             {% if target_is_mod %}<span class="mod-badge"
-                                >👮 MOD</span
+                                >ðŸ‘® MOD</span
                             >{% endif %}
                             {% if target_banned %}
-                            <span class="banned-badge">🚫 BANNED</span>
+                            <span class="banned-badge">ðŸš« BANNED</span>
                             {% endif %}
                         </h2>
                         <p class="username">@{{ username }}</p>
 
                         <div class="profile-bio">
-                            <p>{{ profile.get('bio') or "✨ No bio yet." }}</p>
+                            <p>{{ profile.get('bio') or "âœ¨ No bio yet." }}</p>
                         </div>
 
                         <div class="profile-actions">
@@ -112,42 +112,42 @@
                                 action="/friends/request/{{ username }}"
                             >
                                 <button type="submit" class="dm-btn">
-                                    ➕ Add Friend</button>
+                                    âž• Add Friend</button>
                             </form>
                             {% elif friend_status == 'pending_out' %}
-                            <span class="pill">⏳ Request sent</span>
+                            <span class="pill">â³ Request sent</span>
                             {% elif friend_status == 'pending_in' %}
                             <form
                                 method="POST"
                                 action="/friends/request/{{ username }}"
                             >
                                 <button type="submit" class="dm-btn">
-                                    ✔ Accept Friend</button>
+                                    âœ” Accept Friend</button>
                             </form>
                             {% elif friend_status == 'friends' %}
-                            <span class="pill">✅ Friends</span>
+                            <span class="pill">âœ… Friends</span>
                             {% endif %}
                             <a href="/dm/{{ username }}" class="dm-btn"
-                                >💬 Message</a
+                                >ðŸ’¬ Message</a
                             >
                             {% elif user and username == user %}
                             <a href="/profile" class="dm-btn"
-                                >✏️ Edit Profile</a
+                                >âœï¸ Edit Profile</a
                             >
                             {% else %}
                             <a href="/login" class="dm-btn"
-                                >🔐 Login to Message</a
+                                >ðŸ” Login to Message</a
                             >
                             {% endif %}
                             <a href="/users" class="back-btn"
-                                >← Back to Users</a
+                                >â† Back to Users</a
                             >
                         </div>
 
                         {% if is_mod and not target_is_mod and username != user
                         %}
                         <div class="mod-panel">
-                            <h3>👮 Moderator tools</h3>
+                            <h3>ðŸ‘® Moderator tools</h3>
                             <div class="profile-actions">
                                 {% if target_banned %}
                                 <form
@@ -160,7 +160,7 @@
                                         value="/user/{{ username }}"
                                     />
                                     <button type="submit" class="mini-btn">
-                                        ♻️ Unban</button>
+                                        â™»ï¸ Unban</button>
                                 </form>
                                 {% else %}
                                 <form
@@ -177,7 +177,7 @@
                                         type="submit"
                                         class="mini-btn danger-text"
                                     >
-                                        🚫 Ban</button>
+                                        ðŸš« Ban</button>
                                 </form>
                                 {% endif %}
                                 <form
@@ -194,7 +194,7 @@
                                         type="submit"
                                         class="mini-btn danger-text"
                                     >
-                                        🗑️ Delete Account</button>
+                                        ðŸ—‘ï¸ Delete Account</button>
                                 </form>
                             </div>
                         </div>
@@ -213,6 +213,7 @@
                 avatar: "{{ avatar|default('') }}",
             };
         </script>
-        <script src="/static/js/chat.js?v=9"></script>
+        <script src="/static/js/socket.io.min.js?v=1"></script>
+        <script src="/static/js/chat.js?v=10"></script>
     </body>
 </html>

@@ -7,13 +7,11 @@
   if (typeof window.CHAT_USER !== "undefined") CHAT_USER = window.CHAT_USER;
   if (typeof window.GROUP_ID !== "undefined") GROUP_ID = window.GROUP_ID;
 
-  let eventSource = null;
-  let notifySource = null;
+  let socket = null;
   let messagesContainer, messageForm, messageInput, fileInput, sendBtn;
   let currentUser = "",
     currentDisplay = "",
     currentAvatar = "";
-  let reconnectAttempts = 0;
   const MAX_RECONNECT_DELAY = 15000;
   let hamburgerBtn, sidebar, overlay, themeToggle;
   let unreadNotifs = 0;
@@ -60,6 +58,7 @@
     initContextMenu();
     initReplyPreview();
     initNotifications();
+    initRealtime();
 
     if (isChatPage) {
       // Wait for video player script to be available
@@ -69,7 +68,6 @@
       } else {
         enhanceExistingMessages();
       }
-      initSSE();
       setupEventListeners();
       if (messageInput) {
         messageInput.focus();
@@ -536,60 +534,83 @@
     return "Type a message...";
   }
 
-  function initSSE() {
-    if (eventSource) eventSource.close();
-    let url;
-    if (CHAT_TYPE === "global") url = "/stream/global";
-    else if (CHAT_TYPE === "dm") url = `/stream/dm/${CHAT_USER}`;
-    else if (CHAT_TYPE === "group") url = `/stream/group/${GROUP_ID}`;
-    eventSource = new EventSource(url);
-    eventSource.onopen = () => {
-      reconnectAttempts = 0;
-    };
-    eventSource.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.type === "heartbeat" || data.type === "connected") return;
-        if (data.type === "logout") {
-          alert("Another login detected. You will be logged out.");
-          window.location.href = "/login";
-          return;
-        }
-        if (data.type === "delete") {
-          const msgElement = document.querySelector(
-            `.message[data-message-id="${data.message_id}"]`,
-          );
-          if (msgElement) msgElement.remove();
-          return;
-        }
-        if (data.type === "group_update") {
-          if (groupData) groupData.name = data.name;
-          const headerTitle = document.querySelector(".chat-header h2");
-          if (headerTitle) headerTitle.textContent = `#${data.name}`;
-          messageInput.placeholder = `Message #${data.name}...`;
-          return;
-        }
-        if (data.type === "group_deleted") {
-          alert("This group has been deleted by the creator.");
-          window.location.href = "/groups";
-          return;
-        }
-        if (data.from !== currentUser) addMessage(data, false);
-      } catch (err) {
-        console.error(err);
+  // ========== REALTIME (Socket.IO) ==========
+  // One persistent WebSocket per tab carries both the chat stream and
+  // the personal notification stream. This replaces the old two-SSE
+  // setup, which could exhaust the browser's ~6-connections-per-host
+  // HTTP/1.1 pool and stall every other request (slow site, pages
+  // like /friends hanging).
+  function initRealtime() {
+    const me = window.CURRENT_USER_DATA && window.CURRENT_USER_DATA.username;
+    if (!me) return;
+    if (typeof io === "undefined") {
+      console.warn("Socket.IO client not loaded; realtime disabled.");
+      return;
+    }
+
+    socket = io({
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: MAX_RECONNECT_DELAY,
+    });
+
+    socket.on("connect", () => {
+      // (Re-)subscribe after every (re)connection.
+      if (!isChatPage) return;
+      if (CHAT_TYPE === "global") {
+        socket.emit("subscribe", { chat_type: "global" });
+      } else if (CHAT_TYPE === "dm") {
+        socket.emit("subscribe", { chat_type: "dm", username: CHAT_USER });
+      } else if (CHAT_TYPE === "group") {
+        socket.emit("subscribe", { chat_type: "group", group_id: GROUP_ID });
       }
-    };
-    eventSource.onerror = () => {
-      // Retry forever with capped exponential backoff; the old code gave
-      // up permanently after 5 failed attempts.
-      if (eventSource.readyState === EventSource.CLOSED) {
-        const delay = Math.min(
-          1000 * Math.pow(2, ++reconnectAttempts),
-          MAX_RECONNECT_DELAY,
-        );
-        setTimeout(() => initSSE(), delay);
-      }
-    };
+    });
+
+    // ---- chat stream ----
+    socket.on("message", handleIncomingMessage);
+    socket.on("delete", handleDeleteEvent);
+    socket.on("group_update", handleGroupUpdate);
+    socket.on("group_deleted", handleGroupDeleted);
+
+    // ---- personal stream ----
+    socket.on("notification", handleNotificationEvent);
+    socket.on("banned", handleNotificationEvent);
+    socket.on("account_deleted", handleNotificationEvent);
+    socket.on("shutdown", () => {
+      window.location.href = "/login";
+    });
+  }
+
+  function handleIncomingMessage(data) {
+    try {
+      if (!data || typeof data !== "object" || data.type) return;
+      if (data.from !== currentUser) addMessage(data, false);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  function handleDeleteEvent(data) {
+    if (!data || !data.message_id) return;
+    const msgElement = document.querySelector(
+      `.message[data-message-id="${data.message_id}"]`,
+    );
+    if (msgElement) msgElement.remove();
+  }
+
+  function handleGroupUpdate(data) {
+    if (CHAT_TYPE !== "group" || !data || typeof data.name !== "string")
+      return;
+    if (groupData) groupData.name = data.name;
+    const headerTitle = document.querySelector(".chat-header h2");
+    if (headerTitle) headerTitle.textContent = `#${data.name}`;
+    if (messageInput)
+      messageInput.placeholder = `Message #${data.name}...`;
+  }
+
+  function handleGroupDeleted() {
+    alert("This group has been deleted by the creator.");
+    window.location.href = "/groups";
   }
 
   async function handleSubmit(e) {
@@ -971,31 +992,9 @@
       }
     });
 
-    // Live stream
-    let attempts = 0;
-    const connect = () => {
-      notifySource = new EventSource("/stream/notify");
-      notifySource.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          if (data.type === "heartbeat" || data.type === "connected") return;
-          handleNotificationEvent(data);
-          attempts = 0;
-        } catch (err) {
-          /* ignore */
-        }
-      };
-      notifySource.onerror = () => {
-        if (notifySource.readyState === EventSource.CLOSED) {
-          const delay = Math.min(
-            1000 * Math.pow(2, ++attempts),
-            MAX_RECONNECT_DELAY,
-          );
-          setTimeout(connect, delay);
-        }
-      };
-    };
-    connect();
+    // Live notifications arrive over the shared Socket.IO connection
+    // opened by initRealtime() ("notification" / "banned" /
+    // "account_deleted" events).
   }
 
   // ========== SIDEBAR & THEME ==========
@@ -1090,7 +1089,6 @@
   }
 
   window.addEventListener("beforeunload", () => {
-    if (eventSource) eventSource.close();
-    if (notifySource) notifySource.close();
+    if (socket) socket.close();
   });
 })();

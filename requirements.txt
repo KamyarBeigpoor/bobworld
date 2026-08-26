@@ -2,3 +2,7 @@ Flask>=3.0
 Werkzeug>=3.0
 cryptography>=42.0
 psycopg2-binary>=2.9
+Flask-SocketIO>=5.3
+python-socketio>=5.10
+python-engineio>=4.8
+simple-websocket>=1.0

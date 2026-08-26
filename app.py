@@ -1,7 +1,8 @@
 from flask import (
     Flask, render_template, request, redirect, session,
-    send_from_directory, Response, jsonify, abort
+    send_from_directory, jsonify, abort
 )
+from flask_socketio import SocketIO, join_room
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
@@ -15,7 +16,6 @@ import base64
 import atexit
 import json
 import os
-import queue
 import re
 import secrets
 import signal
@@ -67,6 +67,9 @@ app.secret_key = os.environ.get(
 
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+# Uploaded files have immutable uuid names and css/js are versioned by
+# query string, so aggressive browser caching is safe and cuts requests.
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = timedelta(hours=12)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 # Set SESSION_COOKIE_SECURE=true in .env once the site is served over HTTPS.
@@ -107,6 +110,7 @@ REQUIRED_FILES = (
     "static/css/videoplayer.css",
     "static/js/chat.js",
     "static/js/video-player.js",
+    "static/js/socket.io.min.js",
     "static/css/ms_sans_serif.woff2",
     "static/css/ms_sans_serif_bold.woff2",
 )
@@ -269,141 +273,94 @@ USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 # ============================================================
-# EVENT BROKER (SSE)
+# REALTIME (Socket.IO)
+#
+# Replaces the old per-page SSE streams. One persistent WebSocket
+# connection per tab now carries chat messages AND notifications,
+# instead of two hanging HTTP responses. This matters because
+# browsers allow only ~6 parallel HTTP/1.1 connections per host:
+# a couple of open tabs used to starve the pool, making page
+# navigations (e.g. the Friends tab) hang and the whole site feel
+# slow. Socket.IO multiplexes everything over a single connection.
+#
+# Rooms:
+#   chat:global            - every connected client (global chat page)
+#   chat:dm:<dm_key>       - both participants of one DM conversation
+#   chat:group:<group_id>  - members watching one group
+#   user:<username>        - personal room: notifications, bans, etc.
 # ============================================================
 
-class EventBroker:
-
-    def __init__(self):
-        self.lock = threading.RLock()
-
-        self.global_clients = set()
-        self.dm_clients = {}
-        self.group_clients = {}
-        self.notify_clients = {}  # username -> set of queues
-
-    def subscribe(self, chat_type, chat_id=None):
-        q = queue.Queue()
-
-        with self.lock:
-
-            if chat_type == "global":
-                self.global_clients.add(q)
-
-            elif chat_type == "dm":
-                self.dm_clients.setdefault(
-                    chat_id,
-                    set()
-                ).add(q)
-
-            elif chat_type == "group":
-                self.group_clients.setdefault(
-                    chat_id,
-                    set()
-                ).add(q)
-
-        return q
-
-    def unsubscribe(self, chat_type, q, chat_id=None):
-
-        with self.lock:
-
-            if chat_type == "global":
-                self.global_clients.discard(q)
-
-            elif chat_type == "dm":
-                clients = self.dm_clients.get(chat_id)
-
-                if clients:
-                    clients.discard(q)
-
-                    if not clients:
-                        self.dm_clients.pop(
-                            chat_id,
-                            None
-                        )
-
-            elif chat_type == "group":
-                clients = self.group_clients.get(chat_id)
-
-                if clients:
-                    clients.discard(q)
-
-                    if not clients:
-                        self.group_clients.pop(
-                            chat_id,
-                            None
-                        )
-
-    def has_subscribers(self, chat_type, chat_id=None):
-        """True when at least one SSE listener is attached to this chat."""
-        with self.lock:
-            if chat_type == "global":
-                return bool(self.global_clients)
-            if chat_type == "dm":
-                return bool(self.dm_clients.get(chat_id))
-            if chat_type == "group":
-                return bool(self.group_clients.get(chat_id))
-        return False
-
-    # ---- per-user notification streams --------------------------------
-
-    def subscribe_notify(self, username):
-        q = queue.Queue()
-
-        with self.lock:
-            self.notify_clients.setdefault(username, set()).add(q)
-
-        return q
-
-    def unsubscribe_notify(self, username, q):
-        with self.lock:
-            clients = self.notify_clients.get(username)
-
-            if clients:
-                clients.discard(q)
-
-                if not clients:
-                    self.notify_clients.pop(username, None)
-
-    def publish_notify(self, username, data):
-        with self.lock:
-            clients = list(self.notify_clients.get(username, ()))
-
-        for client in clients:
-            try:
-                client.put_nowait(data)
-            except Exception:
-                self.unsubscribe_notify(username, client)
-
-    def publish(self, chat_type, data, chat_id=None):
-
-        with self.lock:
-
-            if chat_type == "global":
-                clients = list(self.global_clients)
-
-            elif chat_type == "dm":
-                clients = list(self.dm_clients.get(chat_id, set()))
-
-            elif chat_type == "group":
-                clients = list(self.group_clients.get(chat_id, set()))
-
-            else:
-                return
-
-        for client in clients:
-            try:
-                client.put_nowait(data)
-            except Exception:
-                self.unsubscribe(
-                    chat_type,
-                    client,
-                    chat_id
-                )
+socketio = SocketIO(
+    app,
+    async_mode="threading",
+    cors_allowed_origins=None,  # same-origin only
+)
+# The browser client library is vendored at static/js/socket.io.min.js
+# (newer python-engineio releases no longer serve it from /socket.io/).
 
 
-events = EventBroker()
+def chat_room(chat_type, chat_id=None):
+    if chat_type == "global":
+        return "chat:global"
+    if chat_type == "dm":
+        return f"chat:dm:{chat_id}"
+    if chat_type == "group":
+        return f"chat:group:{chat_id}"
+    return None
+
+
+def user_room(username):
+    return f"user:{username}"
+
+
+@socketio.on("connect")
+def ws_connect():
+    """Reject anonymous sockets; give each user a personal room."""
+    me = session.get("user")
+    if not me:
+        return False  # refuse the connection
+    join_room(user_room(me))
+
+
+@socketio.on("subscribe")
+def ws_subscribe(data):
+    """
+    The client asks to join its current chat's room after connecting
+    (and again after any reconnect). Authorization mirrors what the
+    old /stream/* endpoints enforced before opening an SSE pipe.
+    """
+    me = session.get("user")
+
+    if not me or not isinstance(data, dict):
+        return {"ok": False}
+
+    chat_type = data.get("chat_type")
+
+    try:
+        if chat_type == "global":
+            join_room(chat_room("global"))
+            return {"ok": True}
+
+        if chat_type == "dm":
+            username = str(data.get("username") or "")
+            if not username or username == me \
+                    or not db.user_exists(username):
+                return {"ok": False}
+            join_room(chat_room("dm", dm_key(me, username)))
+            return {"ok": True}
+
+        if chat_type == "group":
+            group_id = str(data.get("group_id") or "")
+            group = db.get_group(group_id)
+            if not group or me not in group.get("members", []):
+                return {"ok": False}
+            join_room(chat_room("group", group_id))
+            return {"ok": True}
+
+    except Exception:
+        app.logger.exception("socket subscribe failed")
+
+    return {"ok": False}
 
 
 # ============================================================
@@ -559,6 +516,11 @@ def _same_origin_request():
 
 @app.before_request
 def csrf_origin_guard():
+    # Socket.IO transport frames are not application state changes; the
+    # handshake itself is protected by the session cookie and by
+    # Socket.IO's same-origin policy.
+    if request.path.startswith("/socket.io"):
+        return None
     if request.method in ("POST", "PUT", "PATCH", "DELETE"):
         if not _same_origin_request():
             return jsonify({"error": "Cross-site request blocked"}), 403
@@ -591,6 +553,11 @@ def check_active_session():
         "uploads",
         "avatars",
     }
+
+    # Socket.IO handles its own auth (anonymous sockets are rejected in
+    # ws_connect) and must never be redirected to the login page.
+    if request.path.startswith("/socket.io"):
+        return None
 
     if request.endpoint in public_endpoints:
         return None
@@ -695,22 +662,23 @@ def login():
             if user and banned:
                 error = "This account has been banned."
                 _login_record_failure(key)
-            elif user and check_password_hash(
-                user.get("password_hash", ""),
-                password
-            ):
-                session.clear()
-                session["user"] = username
-                # Bind the session to this account's immutable id.
-                session["uid"] = user.get("id")
-                session.permanent = True
+            elif user is not None:
+                # Compute the password hash exactly once.
+                if check_password_hash(
+                    user.get("password_hash", ""),
+                    password
+                ):
+                    session.clear()
+                    session["user"] = username
+                    # Bind the session to this account's immutable id.
+                    session["uid"] = user.get("id")
+                    session.permanent = True
 
-                return redirect("/chat")
+                    return redirect("/chat")
 
-            elif user is None or not check_password_hash(
-                user.get("password_hash", ""),
-                password
-            ):
+                error = "Invalid username or password."
+                _login_record_failure(key)
+            else:
                 error = "Invalid username or password."
                 _login_record_failure(key)
 
@@ -923,28 +891,31 @@ def create_message(sender, text, file):
 
 
 def publish_message(chat_type, chat_id, message):
-    events.publish(chat_type, message, chat_id)
+    room = chat_room(chat_type, chat_id)
+    if room:
+        socketio.emit("message", message, room=room)
 
 
 def push_notification(username, ntype, actor, text, link):
     """
-    Always record the notification as unread AND push it live if the
-    recipient has an open stream. We deliberately do NOT suppress
-    notifications when the recipient appears to be viewing the
-    conversation: a just-closed tab's stream can linger server-side for
-    seconds, which previously swallowed DM notifications. Opening the
+    Always record the notification as unread AND push it live to every
+    open tab of the recipient (their personal socket room). Opening the
     conversation clears its notifications anyway.
     """
     nid = db.add_notification(username, ntype, actor, text, link)
 
-    events.publish_notify(username, {
-        "type": "notification",
-        "id": nid,
-        "ntype": ntype,
-        "actor": actor,
-        "text": text,
-        "link": link,
-    })
+    socketio.emit(
+        "notification",
+        {
+            "type": "notification",
+            "id": nid,
+            "ntype": ntype,
+            "actor": actor,
+            "text": text,
+            "link": link,
+        },
+        room=user_room(username),
+    )
 
 
 # ============================================================
@@ -1164,13 +1135,13 @@ def delete_message():
             except OSError:
                 pass
 
-    events.publish(
-        chat_type,
+    socketio.emit(
+        "delete",
         {
             "type": "delete",
             "message_id": message_id,
         },
-        chat_id if chat_type != "global" else None
+        room=chat_room(chat_type, chat_id if chat_type != "global" else None),
     )
 
     return jsonify({"status": "ok"})
@@ -1430,13 +1401,13 @@ def edit_group(group_id):
 
     db.update_group_name(group_id, name)
 
-    events.publish(
-        "group",
+    socketio.emit(
+        "group_update",
         {
             "type": "group_update",
             "name": name,
         },
-        group_id
+        room=chat_room("group", group_id),
     )
 
     return jsonify({
@@ -1474,10 +1445,10 @@ def delete_group(group_id):
             except OSError:
                 pass
 
-    events.publish(
-        "group",
+    socketio.emit(
+        "group_deleted",
         {"type": "group_deleted"},
-        group_id
+        room=chat_room("group", group_id),
     )
 
     return jsonify({"status": "ok"})
@@ -1975,51 +1946,6 @@ def notifications_read_api():
     return jsonify({"status": "ok"})
 
 
-@app.route("/stream/notify")
-def stream_notify():
-
-    me = session["user"]
-
-    q = events.subscribe_notify(me)
-
-    def generate():
-        try:
-            yield (
-                "data: "
-                + json.dumps({"type": "connected"})
-                + "\n\n"
-            )
-
-            while True:
-                try:
-                    event = q.get(timeout=25)
-                    yield (
-                        "data: "
-                        + json.dumps(event, ensure_ascii=False)
-                        + "\n\n"
-                    )
-                except queue.Empty:
-                    yield (
-                        "data: "
-                        + json.dumps({"type": "heartbeat"})
-                        + "\n\n"
-                    )
-        except GeneratorExit:
-            pass
-        finally:
-            events.unsubscribe_notify(me, q)
-
-    return Response(
-        generate(),
-        mimetype="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
-    )
-
-
 # ============================================================
 # ACCOUNT: PASSWORD & DELETE
 # ============================================================
@@ -2099,7 +2025,11 @@ def profile_delete():
             except OSError:
                 pass
 
-    events.publish_notify(me, {"type": "account_deleted"})
+    socketio.emit(
+        "account_deleted",
+        {"type": "account_deleted"},
+        room=user_room(me),
+    )
 
     session.clear()
 
@@ -2153,7 +2083,11 @@ def mod_ban(username):
     db.ban_user(username, reason)
 
     # Kick them out of any open tabs right away.
-    events.publish_notify(username, {"type": "banned"})
+    socketio.emit(
+        "banned",
+        {"type": "banned"},
+        room=user_room(username),
+    )
 
     return redirect(safe_redirect_target(
         request.form.get("next"), "/users"
@@ -2207,103 +2141,15 @@ def mod_delete_user(username):
         _unlink_upload(filename)
 
     # Tell their open tabs the account ceased to exist.
-    events.publish_notify(username, {"type": "account_deleted"})
+    socketio.emit(
+        "account_deleted",
+        {"type": "account_deleted"},
+        room=user_room(username),
+    )
 
     return redirect(safe_redirect_target(
         request.form.get("next"), "/users"
     ))
-
-
-# ============================================================
-# SSE
-# ============================================================
-
-def sse_response(chat_type, chat_id=None):
-
-    q = events.subscribe(chat_type, chat_id)
-
-    def generate():
-
-        try:
-
-            yield (
-                "data: "
-                + json.dumps({"type": "connected"})
-                + "\n\n"
-            )
-
-            while True:
-
-                try:
-                    event = q.get(timeout=25)
-
-                    yield (
-                        "data: "
-                        + json.dumps(event, ensure_ascii=False)
-                        + "\n\n"
-                    )
-
-                except queue.Empty:
-
-                    # Keep proxies/load balancers
-                    # from killing idle connections.
-                    yield (
-                        "data: "
-                        + json.dumps({"type": "heartbeat"})
-                        + "\n\n"
-                    )
-
-        except GeneratorExit:
-            pass
-
-        finally:
-            events.unsubscribe(chat_type, q, chat_id)
-
-    return Response(
-        generate(),
-        mimetype="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
-    )
-
-
-@app.route("/stream/global")
-def stream_global():
-
-    if not session.get("user"):
-        return "Unauthorized", 401
-
-    return sse_response("global")
-
-
-@app.route("/stream/dm/<username>")
-def stream_dm(username):
-
-    me = session["user"]
-
-    if not db.user_exists(username):
-        return "User not found", 404
-
-    return sse_response("dm", dm_key(me, username))
-
-
-@app.route("/stream/group/<group_id>")
-def stream_group(group_id):
-
-    current = session["user"]
-
-    group = db.get_group(group_id)
-
-    if not group:
-        return "Group not found", 404
-
-    if current not in group.get("members", []):
-        return "Forbidden", 403
-
-    return sse_response("group", group_id)
 
 
 # ============================================================
@@ -2350,32 +2196,11 @@ def shutdown_cleanly(signum=None, frame=None):
 
     print("Shutting down...")
 
-    # Tell connected SSE clients.
-    shutdown_event = {"type": "shutdown"}
-
-    with events.lock:
-
-        clients = (
-            list(events.global_clients)
-            + [
-                q
-                for clients_set
-                in events.dm_clients.values()
-                for q in clients_set
-            ]
-            + [
-                q
-                for clients_set
-                in events.group_clients.values()
-                for q in clients_set
-            ]
-        )
-
-    for q in clients:
-        try:
-            q.put_nowait(shutdown_event)
-        except Exception:
-            pass
+    # Tell connected Socket.IO clients.
+    try:
+        socketio.emit("shutdown", {"type": "shutdown"})
+    except Exception:
+        pass
 
     # SQLite writes are committed synchronously; just close cleanly.
     try:
@@ -2405,9 +2230,12 @@ except (ValueError, AttributeError):
 # ============================================================
 
 if __name__ == "__main__":
-    app.run(
+    # socketio.run() (not app.run) so WebSocket upgrades are served.
+    socketio.run(
+        app,
         host="0.0.0.0",
         port=3000,
-        threaded=True,
+        debug=False,
         use_reloader=False,
+        allow_unsafe_werkzeug=True,  # dev server; same as before
     )

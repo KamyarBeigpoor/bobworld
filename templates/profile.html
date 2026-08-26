@@ -9,7 +9,7 @@
         <title>Edit Profile - bobworld</title>
         <link
             rel="icon"
-            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
+            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>ðŸ’¬</text></svg>"
         />
         <link rel="stylesheet" href="/static/css/chat.css?v=9" />
     </head>
@@ -34,27 +34,27 @@
                         </div>
                     </div>
                     <a href="/profile" class="edit-profile active"
-                        >✏️ Edit Profile</a
+                        >âœï¸ Edit Profile</a
                     >
                 </div>
                 <nav class="sidebar-nav">
-                    <a href="/chat" class="nav-item">🌍 Global Chat</a>
+                    <a href="/chat" class="nav-item">ðŸŒ Global Chat</a>
                     <a href="/friends" class="nav-item">
-                        🫂 Friends</a
+                        ðŸ«‚ Friends</a
                     >
-                    <a href="/users" class="nav-item">👥 Users</a>
-                    <a href="/groups" class="nav-item">🏡 Groups</a>
+                    <a href="/users" class="nav-item">ðŸ‘¥ Users</a>
+                    <a href="/groups" class="nav-item">ðŸ¡ Groups</a>
                     <button id="themeToggle" class="nav-item">
-                        🌓 Dark/Light
+                        ðŸŒ“ Dark/Light
                     </button>
-                    <a href="/logout" class="nav-item logout">🚪 Logout</a>
+                    <a href="/logout" class="nav-item logout">ðŸšª Logout</a>
                 </nav>
             </aside>
 
             <main class="profile-main">
                 <header class="chat-header">
-                    <button class="hamburger" id="hamburgerBtn">☰</button>
-                    <h2>✏️ Edit Profile</h2>
+                    <button class="hamburger" id="hamburgerBtn">â˜°</button>
+                    <h2>âœï¸ Edit Profile</h2>
                     <div class="placeholder"></div>
                 </header>
 
@@ -82,7 +82,7 @@
                                     {% endif %}
                                 </div>
                                 <label class="avatar-upload-btn">
-                                    📷 Change Avatar
+                                    ðŸ“· Change Avatar
                                     <input
                                         type="file"
                                         name="avatar"
@@ -119,18 +119,18 @@
                                 >
                             </div>
                             <button type="submit" class="save-btn">
-                                💾 Save Changes
+                                ðŸ’¾ Save Changes
                             </button>
-                            <a href="/chat" class="back-btn">⬅ Back to Chat</a>
+                            <a href="/chat" class="back-btn">â¬… Back to Chat</a>
                         </form>
 
                         {% if pw_error %}
                         <div class="msg-error" role="alert">
-                            ⚠️ {{ pw_error }}
+                            âš ï¸ {{ pw_error }}
                         </div>
                         {% endif %}
                         {% if pw_ok %}
-                        <div class="msg-ok" role="status">✅ {{ pw_ok }}</div>
+                        <div class="msg-ok" role="status">âœ… {{ pw_ok }}</div>
                         {% endif %}
 
                         {# ---------- Change password ---------- #}
@@ -140,7 +140,7 @@
                             class="account-form"
                         >
                             <fieldset>
-                                <legend>🔑 Change Password</legend>
+                                <legend>ðŸ”‘ Change Password</legend>
                                 <div class="form-group">
                                     <label for="pw-current"
                                         >Current password</label
@@ -178,7 +178,7 @@
                                     />
                                 </div>
                                 <button type="submit" class="save-btn">
-                                    🔑 Update Password
+                                    ðŸ”‘ Update Password
                                 </button>
                             </fieldset>
                         </form>
@@ -191,7 +191,7 @@
                             onsubmit="return confirm('Really delete your account? Your profile, friends, groups and forum posts will be removed permanently. Chat messages stay.')"
                         >
                             <fieldset>
-                                <legend>⚠️ Danger zone</legend>
+                                <legend>âš ï¸ Danger zone</legend>
                                 <p class="file-hint">
                                     Deleting your account removes your
                                     profile, friendships, groups you created
@@ -214,7 +214,7 @@
                                     type="submit"
                                     class="save-btn danger-btn"
                                 >
-                                    🗑️ Delete My Account
+                                    ðŸ—‘ï¸ Delete My Account
                                 </button>
                             </fieldset>
                         </form>
@@ -223,6 +223,7 @@
             </main>
         </div>
         <div class="mobile-overlay" id="mobileOverlay"></div>
-        <script src="/static/js/chat.js?v=9"></script>
+        <script src="/static/js/socket.io.min.js?v=1"></script>
+        <script src="/static/js/chat.js?v=10"></script>
     </body>
 </html>

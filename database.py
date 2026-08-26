@@ -784,10 +784,10 @@ class Database:
                     (
                         message.get("text", "")
                         if chat_type == "global"
-                        else self.encrypt_field(message.get("text", ""))
+                        else self._encrypt(message.get("text", ""))
                     ),
                     message.get("file"),
-                    self.encrypt_field(reply) if reply is not None else None,
+                    self._encrypt(reply) if reply is not None else None,
                     int(message["timestamp"]),
                 ),
             )
@@ -1818,7 +1818,7 @@ class Database:
                             user_ids.get(m["from"]),
                             encrypt_text(m["text"]),
                             m["file"],
-                            self.encrypt_field(m["reply"])
+                            self._encrypt(m["reply"])
                             if m["reply"] else None,
                             m["timestamp"],
                         ),
@@ -1844,7 +1844,7 @@ class Database:
                         if not isinstance(msg, dict):
                             continue
                         insert_msg(norm_message(msg), "dm", chat_id,
-                                   self.encrypt_field)
+                                   self._encrypt)
                         count += 1
                     stats["dm_conversations"] += 1
                     stats["dm_messages"] += count
@@ -1858,7 +1858,7 @@ class Database:
                         if not isinstance(msg, dict):
                             continue
                         insert_msg(norm_message(msg), "group", chat_id,
-                                   self.encrypt_field)
+                                   self._encrypt)
                         count += 1
                     stats["group_message_files"] += 1
                     stats["group_messages"] += count
