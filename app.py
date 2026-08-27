@@ -2394,6 +2394,46 @@ def request_too_large(error):
     return jsonify({"error": "File too large"}), 413
 
 
+@app.errorhandler(500)
+def internal_error(error):
+    import traceback as _tb
+    _log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "server_errors.log")
+    with open(_log_file, "a", encoding="utf-8") as f:
+        f.write(f"\n{'='*60}\n500 Internal Server Error\n")
+        f.write(f"URL: {request.url}\n")
+        f.write(f"User: {session.get('user', '???')}\n")
+        f.write(_tb.format_exc())
+        f.write(f"{'='*60}\n")
+    return (
+        "<!doctype html><html><head><title>Error</title></head><body>"
+        "<h1>Something went wrong.</h1>"
+        "<p>Please try again. If this keeps happening, contact an admin.</p>"
+        "<p><a href='/forum'>Back to Forum</a></p>"
+        "</body></html>",
+        500,
+    )
+
+
+@app.errorhandler(Exception)
+def catch_all(error):
+    import traceback as _tb
+    _log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "server_errors.log")
+    with open(_log_file, "a", encoding="utf-8") as f:
+        f.write(f"\n{'='*60}\nUncaught Exception: {error}\n")
+        f.write(f"URL: {request.url}\n")
+        f.write(f"User: {session.get('user', '???')}\n")
+        f.write(_tb.format_exc())
+        f.write(f"{'='*60}\n")
+    return (
+        "<!doctype html><html><head><title>Error</title></head><body>"
+        "<h1>Something went wrong.</h1>"
+        "<p>Please try again. If this keeps happening, contact an admin.</p>"
+        "<p><a href='/forum'>Back to Forum</a></p>"
+        "</body></html>",
+        500,
+    )
+
+
 # ============================================================
 # SHUTDOWN
 # ============================================================
