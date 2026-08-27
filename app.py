@@ -263,6 +263,15 @@ ALLOWED_AVATAR_EXTENSIONS = {
     "webp",
 }
 
+FORUM_IMAGE_EXTENSIONS = {
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+    "webp",
+    "bmp",
+}
+
 MAX_MESSAGE_LENGTH = 10_000
 MAX_USERNAME_LENGTH = 32
 MAX_DISPLAY_NAME_LENGTH = 64
@@ -376,7 +385,7 @@ def valid_extension(filename, allowed):
     return extension in allowed
 
 
-def save_upload(file, avatar=False):
+def save_upload(file, avatar=False, image_only=False):
 
     if not file or not file.filename:
         return None
@@ -386,11 +395,14 @@ def save_upload(file, avatar=False):
     if not filename:
         return None
 
-    allowed = (
-        ALLOWED_AVATAR_EXTENSIONS
-        if avatar
-        else ALLOWED_UPLOAD_EXTENSIONS
-    )
+    if image_only:
+        allowed = FORUM_IMAGE_EXTENSIONS
+    else:
+        allowed = (
+            ALLOWED_AVATAR_EXTENSIONS
+            if avatar
+            else ALLOWED_UPLOAD_EXTENSIONS
+        )
 
     if not valid_extension(filename, allowed):
         return None
@@ -1584,7 +1596,7 @@ def _forum_post_body():
     image_file = request.files.get("image")
 
     if image_file and image_file.filename:
-        image = save_upload(image_file)
+        image = save_upload(image_file, image_only=True)
         if not image:
             return None, None, ("Invalid image", 400)
     else:
@@ -1602,11 +1614,19 @@ def forum():
     current = session["user"]
 
     category = request.args.get("category", "").strip() or None
+    if category is not None and category not in FORUM_CATEGORIES:
+        category = None
     query_text = request.args.get("q", "").strip() or None
+    if query_text is not None:
+        query_text = query_text[:100]
     sort = request.args.get("sort", "active").strip()
     if sort not in ("active", "new", "top"):
         sort = "active"
-    page = max(1, int(request.args.get("page", 1)))
+    try:
+        page = int(request.args.get("page", 1))
+    except (TypeError, ValueError):
+        page = 1
+    page = max(1, page)
     offset = (page - 1) * FORUM_THREADS_PER_PAGE
 
     total = db.count_forum_threads(category=category, query_text=query_text)
@@ -1801,6 +1821,14 @@ def forum_vote():
     if not exists:
         return jsonify({"error": "Not found"}), 404
 
+    if target_type == "reply" and exists.get("thread_id"):
+        parent = db.get_forum_thread(exists["thread_id"])
+        if parent and parent.get("locked") and not is_moderator(current):
+            return jsonify({"error": "This thread is locked"}), 403
+    elif target_type == "thread" and exists.get("locked") \
+            and not is_moderator(current):
+        return jsonify({"error": "This thread is locked"}), 403
+
     summary = db.set_vote(target_type, target_id, current, value)
 
     return jsonify(summary)
@@ -1828,6 +1856,9 @@ def forum_delete_thread(thread_id):
             "error": "Only the author or a moderator can delete this thread"
         }), 403
 
+    if thread.get("locked") and not is_moderator(current):
+        return jsonify({"error": "This thread is locked"}), 403
+
     for filename in db.delete_forum_thread(thread_id):
         path = os.path.join(UPLOAD_FOLDER, filename)
         if os.path.exists(path):
@@ -1836,7 +1867,9 @@ def forum_delete_thread(thread_id):
             except OSError:
                 pass
 
-    return redirect(request.form.get("next") or "/forum")
+    return redirect(safe_redirect_target(
+        request.form.get("next"), "/forum"
+    ))
 
 
 @app.route("/forum/reply/<reply_id>/delete", methods=["POST"])
@@ -1845,9 +1878,13 @@ def forum_delete_reply(reply_id):
     current = session["user"]
 
     reply = db.get_forum_reply(reply_id)
-
     if not reply:
         return jsonify({"error": "Reply not found"}), 404
+
+    parent_thread = db.get_forum_thread(reply["thread_id"])
+    is_mod = is_moderator(current)
+    if not is_mod and parent_thread and parent_thread.get("locked"):
+        return jsonify({"error": "This thread is locked"}), 403
 
     uid = current_uid()
     owns = (
@@ -1856,7 +1893,7 @@ def forum_delete_reply(reply_id):
         else reply["author"] == current
     )
 
-    if not owns and not is_moderator(current):
+    if not owns and not is_mod:
         return jsonify({
             "error": "Only the author or a moderator can delete this reply"
         }), 403
@@ -1898,6 +1935,9 @@ def forum_edit_thread(thread_id):
     if not owns and not is_moderator(current):
         return jsonify({"error": "Cannot edit this thread"}), 403
 
+    if thread.get("locked") and not is_moderator(current):
+        return jsonify({"error": "This thread is locked"}), 403
+
     body = (request.form.get("body") or "").strip()
     title = (request.form.get("title") or "").strip()
 
@@ -1925,6 +1965,11 @@ def forum_edit_reply(reply_id):
     if not reply:
         return jsonify({"error": "Reply not found"}), 404
 
+    parent_thread = db.get_forum_thread(reply["thread_id"])
+    is_mod = is_moderator(current)
+    if not is_mod and parent_thread and parent_thread.get("locked"):
+        return jsonify({"error": "This thread is locked"}), 403
+
     uid = current_uid()
     owns = (
         reply["author_id"] == uid
@@ -1932,7 +1977,7 @@ def forum_edit_reply(reply_id):
         else reply["author"] == current
     )
 
-    if not owns and not is_moderator(current):
+    if not owns and not is_mod:
         return jsonify({"error": "Cannot edit this reply"}), 403
 
     body = (request.form.get("body") or "").strip()

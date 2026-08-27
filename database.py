@@ -1060,17 +1060,19 @@ class Database:
     _VOTE_TABLES = {"thread": "forum_threads", "reply": "forum_replies"}
 
     def _vote_select(self, target_type):
+        if target_type not in self._VOTE_TABLES:
+            raise ValueError("Invalid target_type")
         table = self._VOTE_TABLES[target_type]
         return (
             "(SELECT COALESCE(SUM(v.value), 0) FROM forum_votes v"
-            f"  WHERE v.target_type = '{target_type}'"
+            f"  WHERE v.target_type = ?"
             f"  AND v.target_id = {table}.id) AS score,"
             " (SELECT COUNT(*) FROM forum_votes v"
-            f"  WHERE v.target_type = '{target_type}'"
+            f"  WHERE v.target_type = ?"
             f"  AND v.target_id = {table}.id AND v.value = 1)"
             " AS likes,"
             " (SELECT COUNT(*) FROM forum_votes v"
-            f"  WHERE v.target_type = '{target_type}'"
+            f"  WHERE v.target_type = ?"
             f"  AND v.target_id = {table}.id AND v.value = -1)"
             " AS dislikes"
         )
@@ -1145,7 +1147,7 @@ class Database:
                 f" WHERE {where_sql}"
                 f" ORDER BY {order}"
                 f" LIMIT ? OFFSET ?",
-                (*params, limit, offset),
+                ("thread", "thread", "thread", *params, limit, offset),
             )
             my_votes = self._my_votes_map(
                 "thread", [r["id"] for r in rows], viewer
@@ -1188,7 +1190,7 @@ class Database:
                 "SELECT forum_threads.*,"
                 f" {self._vote_select('thread')}"
                 " FROM forum_threads WHERE forum_threads.id = ?",
-                (thread_id,),
+                ("thread", "thread", "thread", thread_id),
             )
         if row is None:
             return None
@@ -1232,8 +1234,12 @@ class Database:
             raise ValueError("Invalid flag")
         with self._lock:
             self.backend.execute(
-                f"UPDATE forum_threads SET {flag} = ? WHERE id = ?",
-                (1 if value else 0, thread_id),
+                "UPDATE forum_threads SET sticky = ?, locked = ? WHERE id = ?",
+                (
+                    1 if (flag == "sticky" and value) else 0,
+                    1 if (flag == "locked" and value) else 0,
+                    thread_id,
+                ),
             )
 
     def get_thread_author(self, thread_id):
@@ -1274,7 +1280,7 @@ class Database:
                 f" {self._vote_select('reply')}"
                 " FROM forum_replies WHERE thread_id = ?"
                 " ORDER BY timestamp ASC, id ASC",
-                (thread_id,),
+                ("reply", "reply", "reply", thread_id),
             )
             my_votes = self._my_votes_map(
                 "reply", [r["id"] for r in rows], viewer
@@ -1313,7 +1319,7 @@ class Database:
                 "SELECT forum_replies.*,"
                 f" {self._vote_select('reply')}"
                 " FROM forum_replies WHERE forum_replies.id = ?",
-                (reply_id,),
+                ("reply", "reply", "reply", reply_id),
             )
         if row is None:
             return None

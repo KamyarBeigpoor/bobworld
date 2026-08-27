@@ -108,7 +108,7 @@
                                     <input
                                         type="file"
                                         name="image"
-                                        accept="image/*"
+                                        accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"
                                         style="display: none"
                                     />
                                 </label>
@@ -123,9 +123,10 @@
                     {# ---- Filter bar ---- #}
                     <div class="forum-filter-bar">
                         <div class="forum-categories">
-                            <a href="/forum?sort={{ active_sort }}{% if active_query %}&q={{ active_query }}{% endif %}" class="cat-pill{% if not active_category %} active{% endif %}">All</a>
+                            {% set q_suffix = '&q=' ~ (active_query|urlencode) if active_query else '' %}
+                            <a href="/forum?sort={{ active_sort }}{{ q_suffix }}" class="cat-pill{% if not active_category %} active{% endif %}">All</a>
                             {% for cat in categories %}
-                            <a href="/forum?category={{ cat }}&sort={{ active_sort }}{% if active_query %}&q={{ active_query }}{% endif %}" class="cat-pill{% if active_category == cat %} active{% endif %}">{{ cat|capitalize }}{% if cat_counts.get(cat, 0) %} <span class="cat-count">{{ cat_counts[cat] }}</span>{% endif %}</a>
+                            <a href="/forum?category={{ cat|urlencode }}&sort={{ active_sort }}{{ q_suffix }}" class="cat-pill{% if active_category == cat %} active{% endif %}">{{ cat|capitalize }}{% if cat_counts.get(cat, 0) %} <span class="cat-count">{{ cat_counts[cat] }}</span>{% endif %}</a>
                             {% endfor %}
                         </div>
                         <div class="forum-search-sort">
@@ -218,11 +219,11 @@
                     {% if total_pages > 1 %}
                     <div class="forum-pagination">
                         {% if page > 1 %}
-                        <a href="/forum?page={{ page - 1 }}&sort={{ active_sort }}{% if active_category %}&category={{ active_category }}{% endif %}{% if active_query %}&q={{ active_query }}{% endif %}" class="save-btn btn-inline">⬅ Prev</a>
+                        <a href="/forum?page={{ page - 1 }}&sort={{ active_sort }}{% if active_category %}&category={{ active_category }}{% endif %}{% if active_query %}&q={{ active_query|urlencode }}{% endif %}" class="save-btn btn-inline">⬅ Prev</a>
                         {% endif %}
                         <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
                         {% if page < total_pages %}
-                        <a href="/forum?page={{ page + 1 }}&sort={{ active_sort }}{% if active_category %}&category={{ active_category }}{% endif %}{% if active_query %}&q={{ active_query }}{% endif %}" class="save-btn btn-inline">Next ➡</a>
+                        <a href="/forum?page={{ page + 1 }}&sort={{ active_sort }}{% if active_category %}&category={{ active_category }}{% endif %}{% if active_query %}&q={{ active_query|urlencode }}{% endif %}" class="save-btn btn-inline">Next ➡</a>
                         {% endif %}
                     </div>
                     {% endif %}
