@@ -1232,14 +1232,14 @@ class Database:
         """Set sticky or locked flag on a thread. flag: 'sticky'|'locked', value: bool."""
         if flag not in ("sticky", "locked"):
             raise ValueError("Invalid flag")
+        if flag == "sticky":
+            column_sql, col_value = "sticky", (1 if value else 0)
+        else:
+            column_sql, col_value = "locked", (1 if value else 0)
         with self._lock:
             self.backend.execute(
-                "UPDATE forum_threads SET sticky = ?, locked = ? WHERE id = ?",
-                (
-                    1 if (flag == "sticky" and value) else 0,
-                    1 if (flag == "locked" and value) else 0,
-                    thread_id,
-                ),
+                f"UPDATE forum_threads SET {column_sql} = ? WHERE id = ?",
+                (col_value, thread_id),
             )
 
     def get_thread_author(self, thread_id):
