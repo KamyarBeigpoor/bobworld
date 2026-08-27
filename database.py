@@ -96,6 +96,11 @@ def _build_schema(ts):
             title     TEXT NOT NULL,
             body      TEXT NOT NULL DEFAULT '',
             image     TEXT,
+            category  TEXT NOT NULL DEFAULT 'general',
+            view_count INTEGER NOT NULL DEFAULT 0,
+            sticky    INTEGER NOT NULL DEFAULT 0,
+            locked    INTEGER NOT NULL DEFAULT 0,
+            edited_at {ts},
             timestamp {ts} NOT NULL
         )
         """,
@@ -108,6 +113,7 @@ def _build_schema(ts):
             author_id TEXT,
             body      TEXT NOT NULL DEFAULT '',
             image     TEXT,
+            edited_at {ts},
             timestamp {ts} NOT NULL
         )
         """,
@@ -160,6 +166,7 @@ def _build_schema(ts):
 INDEX_STATEMENTS = [
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_id_unique ON users (id)",
     "CREATE INDEX IF NOT EXISTS idx_forum_threads_ts ON forum_threads (timestamp DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_forum_threads_category_sticky ON forum_threads (category ASC, sticky DESC, timestamp DESC)",
     "CREATE INDEX IF NOT EXISTS idx_forum_replies_thread ON forum_replies (thread_id, timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_forum_replies_parent ON forum_replies (parent_id)",
     "CREATE INDEX IF NOT EXISTS idx_forum_votes_target ON forum_votes (target_type, target_id)",
@@ -169,6 +176,8 @@ INDEX_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (username, read, timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_notifications_nid ON notifications (nid)",
 ]
+
+FORUM_CATEGORIES = ("general", "announcements", "questions", "offtopic", "media")
 
 
 def _new_id():
@@ -471,18 +480,38 @@ class Database:
         raw = json.dumps(
             value, ensure_ascii=False, separators=(",", ":")
         ).encode()
-        return self._cipher.encrypt(raw).decode()
+        # The "enc:" prefix marks a value as ciphertext. decrypt_field()
+        # relies on it; without it every DM/group message and stored
+        # reply came back to clients as raw base64 gibberish.
+        return "enc:" + self._cipher.encrypt(raw).decode()
+
+    _FERNET_PREFIXES = ("gAAAAA", "gAAAA")
 
     def decrypt_field(self, stored):
         if stored is None:
             return None
-        if isinstance(stored, str) and stored.startswith("enc:"):
+        if isinstance(stored, str):
+            if stored.startswith("enc:"):
+                token, explicit = stored[4:], True
+            elif stored.startswith("gAAAA"):
+                # Legacy rows written before the "enc:" prefix existed
+                # (they stored bare Fernet tokens). Repair on read.
+                token, explicit = stored, False
+            else:
+                return stored  # plain text (e.g. global chat messages)
             try:
-                raw = self._cipher.decrypt(stored[4:].encode())
+                raw = self._cipher.decrypt(token.encode())
                 return json.loads(raw.decode())
             except Exception:
-                log.exception("Failed to decrypt field; returning placeholder")
-                return "[undecryptable]"
+                if explicit:
+                    # A real "enc:" value failed to decrypt: show a
+                    # marker rather than leaking ciphertext.
+                    log.exception("Failed to decrypt field")
+                    return "[undecryptable]"
+                log.warning(
+                    "Bare-token row did not decrypt; showing raw content"
+                )
+                return stored
         return stored
 
     # ------------------------------------------------------------------
@@ -508,6 +537,7 @@ class Database:
                 self._sqlite_upgrade_old_database()
             else:
                 self._pg_widen_timestamp_columns()
+                self._pg_add_missing_forum_columns()
             for stmt in INDEX_STATEMENTS:
                 self.backend.execute(stmt)
             self._backfill_owner_ids()
@@ -556,18 +586,55 @@ class Database:
                             "(was: %s)", table, row["data_type"]
                         )
 
+    def _pg_add_missing_forum_columns(self):
+        """Add forum_threads / forum_replies columns that may be absent on
+        older PostgreSQL installations (category, view_count, sticky, locked,
+        edited_at). Idempotent: adds each column only if it does not exist."""
+        with self._lock:
+            with self.backend.transaction():
+                for table, columns in (
+                    ("forum_threads", [
+                        ("category", "TEXT NOT NULL DEFAULT 'general'"),
+                        ("view_count", "INTEGER NOT NULL DEFAULT 0"),
+                        ("sticky", "INTEGER NOT NULL DEFAULT 0"),
+                        ("locked", "INTEGER NOT NULL DEFAULT 0"),
+                        ("edited_at", "INTEGER"),
+                    ]),
+                    ("forum_replies", [("edited_at", "INTEGER")]),
+                ):
+                    for col_name, col_type in columns:
+                        row = self.backend.query_one(
+                            "SELECT data_type FROM information_schema.columns"
+                            " WHERE table_name = ? AND column_name = ?",
+                            (table, col_name),
+                        )
+                        if row is None:
+                            self.backend.execute(
+                                f"ALTER TABLE {table} ADD COLUMN"
+                                f" {col_name} {col_type}"
+                            )
+                            log.info(
+                                "Added %s.%s column", table, col_name
+                            )
+
     def _sqlite_upgrade_old_database(self):
         """
         Brings databases created by bobworld <= 6.x up to the current
-        schema: owner-id columns, the notification counter and ids.
+        schema: owner-id columns, the notification counter and ids, and
+        the forum columns (category, view_count, sticky, locked, edited_at).
         """
         additions = {
             "users": [("id", "TEXT")],
             "messages": [("sender_id", "TEXT")],
             "groups": [("creator_id", "TEXT")],
-            "forum_threads": [("author_id", "TEXT")],
-            "forum_replies": [("author_id", "TEXT"), ("parent_id", "TEXT")],
-            "notifications": [("nid", "INTEGER NOT NULL DEFAULT 0")],
+            "forum_threads": [
+                ("category", "TEXT NOT NULL DEFAULT 'general'"),
+                ("view_count", "INTEGER NOT NULL DEFAULT 0"),
+                ("sticky", "INTEGER NOT NULL DEFAULT 0"),
+                ("locked", "INTEGER NOT NULL DEFAULT 0"),
+                ("edited_at", "INTEGER"),
+            ],
+            "forum_replies": [("edited_at", "INTEGER")],
         }
         with self.backend.transaction():
             for table, columns in additions.items():
@@ -816,17 +883,37 @@ class Database:
             msg["reply"] = reply
         return msg
 
-    def get_messages(self, chat_type, chat_id="", limit=200):
-        """Returns up to `limit` messages in chronological order."""
+    def get_messages(self, chat_type, chat_id="", limit=200, before=None):
+        """Returns up to `limit` messages in chronological order.
+        If `before` (timestamp in ms) is given, returns messages with
+        timestamp < before for pagination forward.
+        """
         with self._lock:
-            rows = self.backend.query(
-                "SELECT * FROM messages WHERE chat_type = ? AND chat_id = ?"
-                " ORDER BY timestamp DESC, id DESC LIMIT ?",
-                (chat_type, chat_id or "", limit),
-            )
+            if before is not None:
+                rows = self.backend.query(
+                    "SELECT * FROM messages WHERE chat_type = ? AND chat_id = ?"
+                    " AND timestamp < ? ORDER BY timestamp DESC, id DESC LIMIT ?",
+                    (chat_type, chat_id or "", before, limit),
+                )
+            else:
+                rows = self.backend.query(
+                    "SELECT * FROM messages WHERE chat_type = ? AND chat_id = ?"
+                    " ORDER BY timestamp DESC, id DESC LIMIT ?",
+                    (chat_type, chat_id or "", limit),
+                )
         rows.reverse()
         return [self._message_row_to_dict(r, self.decrypt_field)
                 for r in rows]
+
+    def get_oldest_timestamp(self, chat_type, chat_id):
+        """Get the oldest (earliest) message timestamp for a chat, or None."""
+        with self._lock:
+            row = self.backend.query_one(
+                "SELECT timestamp FROM messages WHERE chat_type = ? AND chat_id = ?"
+                " ORDER BY timestamp ASC, id ASC LIMIT 1",
+                (chat_type, chat_id or ""),
+            )
+        return row["timestamp"] if row else None
 
     def get_message(self, chat_type, chat_id, message_id):
         with self._lock:
@@ -1015,27 +1102,50 @@ class Database:
     # ------------------------------------------------------------------
 
     def create_forum_thread(self, thread_id, author, author_id, title, body,
-                            image=None):
+                            image=None, category="general"):
         with self._lock:
             self.backend.execute(
                 "INSERT INTO forum_threads (id, author, author_id, title,"
-                " body, image, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                " body, image, category, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (thread_id, author, author_id, title, body, image,
-                 int(time.time() * 1000)),
+                 category, int(time.time() * 1000)),
             )
 
-    def list_forum_threads(self, viewer=None, limit=100):
+    def list_forum_threads(self, viewer=None, category=None, query_text=None,
+                           sort="active", limit=20, offset=0):
+        """Filtered, sorted, paginated thread list. Returns list of dicts."""
+        where = ["1 = 1"]
+        params = []
+        if category:
+            where.append("forum_threads.category = ?")
+            params.append(category)
+        if query_text:
+            needle = f"%{query_text.lower()}%"
+            where.append("(LOWER(forum_threads.title) LIKE ? OR LOWER(forum_threads.body) LIKE ?)")
+            params += [needle, needle]
+
+        where_sql = " AND ".join(where)
+
+        _ORDER_MAP = {
+            "active": "forum_threads.sticky DESC, COALESCE(last_activity, forum_threads.timestamp) DESC",
+            "new": "forum_threads.sticky DESC, forum_threads.timestamp DESC",
+            "top": "forum_threads.sticky DESC, score DESC, forum_threads.timestamp DESC",
+        }
+        order = _ORDER_MAP.get(sort, _ORDER_MAP["active"])
+
         with self._lock:
             rows = self.backend.query(
-                "SELECT forum_threads.*,"
-                " (SELECT COUNT(*) FROM forum_replies r"
-                "   WHERE r.thread_id = forum_threads.id) AS reply_count,"
-                " (SELECT MAX(r2.timestamp) FROM forum_replies r2"
-                "   WHERE r2.thread_id = forum_threads.id) AS last_activity,"
+                f"SELECT forum_threads.*,"
+                f" (SELECT COUNT(*) FROM forum_replies r"
+                f"   WHERE r.thread_id = forum_threads.id) AS reply_count,"
+                f" (SELECT MAX(r2.timestamp) FROM forum_replies r2"
+                f"   WHERE r2.thread_id = forum_threads.id) AS last_activity,"
                 f" {self._vote_select('thread')}"
-                " FROM forum_threads"
-                " ORDER BY forum_threads.timestamp DESC LIMIT ?",
-                (limit,),
+                f" FROM forum_threads"
+                f" WHERE {where_sql}"
+                f" ORDER BY {order}"
+                f" LIMIT ? OFFSET ?",
+                (*params, limit, offset),
             )
             my_votes = self._my_votes_map(
                 "thread", [r["id"] for r in rows], viewer
@@ -1049,7 +1159,30 @@ class Database:
             threads.append(thread)
         return threads
 
-    def get_forum_thread(self, thread_id, viewer=None):
+    def count_forum_threads(self, category=None, query_text=None):
+        where = ["1 = 1"]
+        params = []
+        if category:
+            where.append("category = ?")
+            params.append(category)
+        if query_text:
+            needle = f"%{query_text.lower()}%"
+            where.append("(LOWER(title) LIKE ? OR LOWER(body) LIKE ?)")
+            params += [needle, needle]
+        with self._lock:
+            row = self.backend.query_one(
+                f"SELECT COUNT(*) AS n FROM forum_threads WHERE {' AND '.join(where)}",
+                tuple(params),
+            )
+        return row["n"]
+
+    def get_forum_thread(self, thread_id, viewer=None, increment_view=False):
+        if increment_view:
+            with self._lock:
+                self.backend.execute(
+                    "UPDATE forum_threads SET view_count = view_count + 1 WHERE id = ?",
+                    (thread_id,),
+                )
         with self._lock:
             row = self.backend.query_one(
                 "SELECT forum_threads.*,"
@@ -1064,6 +1197,66 @@ class Database:
             "thread", [thread_id], viewer
         ).get(thread_id, 0)
         return thread
+
+    def get_forum_thread_counts_by_category(self):
+        """Returns {category: count} for the sidebar filter."""
+        with self._lock:
+            rows = self.backend.query(
+                "SELECT category, COUNT(*) AS n FROM forum_threads GROUP BY category"
+            )
+        return {r["category"]: r["n"] for r in rows}
+
+    def edit_forum_thread(self, thread_id, body, title=None):
+        with self._lock:
+            if title is not None:
+                self.backend.execute(
+                    "UPDATE forum_threads SET body = ?, title = ?, edited_at = ? WHERE id = ?",
+                    (body, title, int(time.time() * 1000), thread_id),
+                )
+            else:
+                self.backend.execute(
+                    "UPDATE forum_threads SET body = ?, edited_at = ? WHERE id = ?",
+                    (body, int(time.time() * 1000), thread_id),
+                )
+
+    def edit_forum_reply(self, reply_id, body):
+        with self._lock:
+            self.backend.execute(
+                "UPDATE forum_replies SET body = ?, edited_at = ? WHERE id = ?",
+                (body, int(time.time() * 1000), reply_id),
+            )
+
+    def set_thread_flag(self, thread_id, flag, value):
+        """Set sticky or locked flag on a thread. flag: 'sticky'|'locked', value: bool."""
+        if flag not in ("sticky", "locked"):
+            raise ValueError("Invalid flag")
+        with self._lock:
+            self.backend.execute(
+                f"UPDATE forum_threads SET {flag} = ? WHERE id = ?",
+                (1 if value else 0, thread_id),
+            )
+
+    def get_thread_author(self, thread_id):
+        """Returns (author, author_id) tuple or (None, None)."""
+        with self._lock:
+            row = self.backend.query_one(
+                "SELECT author, author_id FROM forum_threads WHERE id = ?",
+                (thread_id,),
+            )
+        if row is None:
+            return None, None
+        return row["author"], row.get("author_id")
+
+    def get_reply_author(self, reply_id):
+        """Returns (author, author_id) tuple or (None, None)."""
+        with self._lock:
+            row = self.backend.query_one(
+                "SELECT author, author_id, thread_id, parent_id FROM forum_replies WHERE id = ?",
+                (reply_id,),
+            )
+        if row is None:
+            return None, None, None, None
+        return row["author"], row.get("author_id"), row.get("thread_id"), row.get("parent_id")
 
     # ------------------------------------------------------------------
     # FORUM: replies (nested, reddit-style)
@@ -1317,6 +1510,21 @@ class Database:
         if row["status"] == "accepted":
             return "friends"
         return "pending_out" if row["requester"] == a else "pending_in"
+
+    def friend_map(self, username):
+        """Returns {other_username: status} for all friendships of `username`.
+        Eliminates N+1 queries on the /users page."""
+        with self._lock:
+            rows = self.backend.query(
+                "SELECT requester, addressee, status FROM friendships"
+                " WHERE requester = ? OR addressee = ?",
+                (username, username),
+            )
+        result = {}
+        for r in rows:
+            other = r["addressee"] if r["requester"] == username else r["requester"]
+            result[other] = r["status"]  # 'accepted' or 'pending'
+        return result
 
     def send_friend_request(self, requester, addressee):
         """Returns 'pending_out' or 'friends' (mutual add auto-accepts);

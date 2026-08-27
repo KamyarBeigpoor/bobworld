@@ -30,6 +30,12 @@
   // Group data
   let groupData = window.GROUP_DATA || null;
 
+  // Message pagination state
+  let hasOlder = false;
+  let oldestTimestamp = null;
+  let loadingOlder = false;
+  let loadOlderBtn = null;
+
   // ========== PAGE DETECTION ==========
   const isChatPage = !!document.getElementById("chatMessages");
   const isProfilePage = !!document.querySelector(".profile-view-container");
@@ -74,6 +80,7 @@
         initAutoExpand();
       }
       scrollToBottom();
+      initLoadOlder();
     }
 
     initAvatarPreview();
@@ -301,9 +308,137 @@
     if (!messagesContainer) return;
     // .chat-messages uses flex-direction: column-reverse, which reverses
     // the scroll axis: scrollTop === 0 shows the newest message.
-    // (The old code set scrollTop = scrollHeight, jumping to the OLDEST
-    // message in spec-compliant browsers.)
     messagesContainer.scrollTop = 0;
+  }
+
+  // ========== LOAD OLDER MESSAGES ==========
+  function initLoadOlder() {
+    if (!isChatPage || !messagesContainer) return;
+    loadOlderBtn = document.createElement("button");
+    loadOlderBtn.type = "button";
+    loadOlderBtn.className = "load-older-btn";
+    loadOlderBtn.textContent = "⬆ Load older messages";
+    loadOlderBtn.style.display = "none";
+    loadOlderBtn.addEventListener("click", loadOlderMessages);
+    messagesContainer.appendChild(loadOlderBtn);
+    hasOlder = true;
+    loadOlderBtn.style.display = "block";
+  }
+
+  async function loadOlderMessages() {
+    if (loadingOlder || !hasOlder) return;
+    loadingOlder = true;
+    loadOlderBtn.textContent = "Loading…";
+    try {
+      let url = `/api/messages?chat_type=${encodeURIComponent(CHAT_TYPE)}&limit=50`;
+      if (CHAT_TYPE === "dm") url += `&chat_id=${encodeURIComponent(CHAT_USER)}`;
+      else if (CHAT_TYPE === "group") url += `&chat_id=${encodeURIComponent(GROUP_ID)}`;
+      else url += "&chat_id=";
+      if (oldestTimestamp) url += `&before=${oldestTimestamp}`;
+
+      const resp = await fetch(url);
+      if (!resp.ok) { loadingOlder = false; loadOlderBtn.textContent = "⬆ Load older messages"; return; }
+      const data = await resp.json();
+      const msgs = data.messages || [];
+      hasOlder = data.has_older || false;
+
+      if (msgs.length > 0) {
+        // Deduplicate existing IDs
+        const existing = new Set();
+        messagesContainer.querySelectorAll(".message[data-message-id]").forEach(el => {
+          existing.add(el.getAttribute("data-message-id"));
+        });
+        // Render new messages (server returns oldest-first, we need to append in descending order for column-reverse)
+        const fragment = document.createDocumentFragment();
+        for (const msg of msgs.reverse()) {
+          if (existing.has(msg.id)) continue;
+          const el = buildMessageElement(msg, msg.from === currentUser);
+          fragment.appendChild(el);
+        }
+        // Append: for column-reverse, appended nodes appear above existing visually
+        messagesContainer.appendChild(fragment);
+        // Track the oldest timestamp for next page
+        oldestTimestamp = msgs[msgs.length - 1]?.timestamp || oldestTimestamp;
+      }
+
+      if (!hasOlder) loadOlderBtn.style.display = "none";
+      loadOlderBtn.textContent = "⬆ Load older messages";
+    } catch (e) {
+      console.error(e);
+      loadOlderBtn.textContent = "⬆ Load older messages";
+    }
+    loadingOlder = false;
+  }
+
+  function buildMessageElement(msg, isOwn) {
+    const div = document.createElement("div");
+    const isVideoOnly =
+      msg.file && isVideoFile(msg.file) && !(msg.text || "").trim() && !msg.reply;
+    div.className = `message ${isOwn ? "sent" : "received"}${isVideoOnly ? " video-msg" : ""}`;
+    div.setAttribute("data-from", msg.from);
+    div.setAttribute("data-timestamp", msg.timestamp);
+    div.setAttribute("data-message-id", msg.id);
+
+    let avatarHtml = "";
+    if (!isOwn) {
+      avatarHtml = `<div class="avatar" data-username="${escapeHtml(msg.from)}">${renderAvatar(msg.from)}</div>`;
+    }
+
+    let fileHtml = "";
+    if (msg.file) {
+      const safeFile = encodeURIComponent(msg.file);
+      if (isImage(msg.file)) {
+        fileHtml = `<div class="attachment"><img src="/uploads/${safeFile}" alt="media" loading="lazy" onclick="window.open(this.src)"></div>`;
+      } else if (isVideoFile(msg.file)) {
+        fileHtml = `<div class="attachment" data-video-src="/uploads/${safeFile}"></div>`;
+      } else {
+        const name = msg.file.includes("_") ? msg.file.split("_").slice(1).join("_") : msg.file;
+        fileHtml = `<div class="attachment"><a href="/uploads/${safeFile}" target="_blank">📎 ${escapeHtml(name)}</a></div>`;
+      }
+    }
+
+    let replyHtml = "";
+    if (msg.reply) {
+      const replySender = msg.reply.from === currentUser ? "You" : getUserInfo(msg.reply.from).display_name;
+      replyHtml = `
+        <div class="message-quote">
+          <div class="quote-header">↩️ Replying to ${escapeHtml(replySender)}</div>
+          <div class="quote-text">${escapeHtml(msg.reply.text || "")}</div>
+          ${msg.reply.file ? `<div class="quote-file">📎 ${escapeHtml(msg.reply.file.split("_").pop() || msg.reply.file)}</div>` : ""}
+        </div>
+      `;
+    }
+
+    const senderUser = getUserInfo(msg.from);
+    const senderDisplay = isOwn ? currentDisplay : senderUser.display_name;
+    const senderHtml = `<div class="sender">${
+      isOwn ? escapeHtml(senderDisplay) : `<a href="#" class="profile-link" data-username="${escapeHtml(msg.from)}">${escapeHtml(senderDisplay)}</a>`
+    }</div>`;
+
+    div.innerHTML = `${avatarHtml}<div class="bubble">
+      ${senderHtml}
+      ${replyHtml}
+      <div class="text">${escapeHtml(msg.text || "")}</div>
+      ${fileHtml}
+      <div class="time">${formatTime(msg.timestamp)}</div>
+    </div>`;
+
+    const bubbleElement = div.querySelector(".bubble");
+    bubbleElement.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (e.target.tagName === "A" || e.target.tagName === "IMG" || e.target.tagName === "VIDEO" || e.target.closest(".retro-video-player")) return;
+      showContextMenu(e, { id: msg.id, from: msg.from, text: msg.text, file: msg.file, timestamp: msg.timestamp });
+    });
+
+    const videoPlaceholders = div.querySelectorAll(".attachment[data-video-src]");
+    videoPlaceholders.forEach((placeholder) => {
+      const videoSrc = placeholder.dataset.videoSrc;
+      if (typeof createRetroVideoPlayer === "function") {
+        placeholder.replaceWith(createRetroVideoPlayer(videoSrc));
+      }
+    });
+
+    return div;
   }
 
   function formatTime(timestamp) {
@@ -603,6 +738,7 @@
     return new Promise((resolve) => {
       if (activeReply) {
         const replyPayload = {
+          id: activeReply.id || null,
           from: activeReply.from,
           text: activeReply.text || "",
           file: activeReply.file || null,
@@ -845,11 +981,20 @@
           const fromAttr = msgDiv.getAttribute("data-from");
           const textElem = msgDiv.querySelector(".text");
           const text = textElem ? textElem.innerText : "";
+          // Try to recover the file name from attachment elements
+          let file = null;
+          const imgEl = msgDiv.querySelector(".attachment img");
+          const vidEl = msgDiv.querySelector(".attachment[data-video-src]");
+          const linkEl = msgDiv.querySelector(".attachment a");
+          if (vidEl) { const p = vidEl.dataset.videoSrc || ""; file = decodeURIComponent(p.split("/").pop()); }
+          else if (imgEl) { const p = imgEl.getAttribute("src") || ""; file = decodeURIComponent(p.split("/").pop()); }
+          else if (linkEl) { const h = linkEl.getAttribute("href") || ""; file = decodeURIComponent(h.split("/").pop()); }
           showContextMenu(e, {
             id: messageId,
             from: fromAttr,
             text: text,
-            file: null,
+            file: file,
+            timestamp: parseInt(msgDiv.getAttribute("data-timestamp") || "0"),
           });
         });
       }

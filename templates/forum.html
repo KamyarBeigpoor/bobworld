@@ -11,7 +11,7 @@
             rel="icon"
             href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
         />
-        <link rel="stylesheet" href="/static/css/chat.css?v=11" />
+        <link rel="stylesheet" href="/static/css/chat.css?v=12" />
     </head>
     <body data-user="{{ user }}" data-display="{{ display_name }}">
         <div class="app">
@@ -87,6 +87,14 @@
                                 />
                             </div>
                             <div class="form-group">
+                                <label for="t-category">Category</label>
+                                <select id="t-category" name="category">
+                                    {% for cat in categories %}
+                                    <option value="{{ cat }}"{% if cat == 'general' %} selected{% endif %}>{{ cat|capitalize }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="form-group">
                                 <label for="t-body">Text (optional)</label>
                                 <textarea
                                     id="t-body"
@@ -112,6 +120,34 @@
                         </form>
                     </details>
 
+                    {# ---- Filter bar ---- #}
+                    <div class="forum-filter-bar">
+                        <div class="forum-categories">
+                            <a href="/forum?sort={{ active_sort }}{% if active_query %}&q={{ active_query }}{% endif %}" class="cat-pill{% if not active_category %} active{% endif %}">All</a>
+                            {% for cat in categories %}
+                            <a href="/forum?category={{ cat }}&sort={{ active_sort }}{% if active_query %}&q={{ active_query }}{% endif %}" class="cat-pill{% if active_category == cat %} active{% endif %}">{{ cat|capitalize }}{% if cat_counts.get(cat, 0) %} <span class="cat-count">{{ cat_counts[cat] }}</span>{% endif %}</a>
+                            {% endfor %}
+                        </div>
+                        <div class="forum-search-sort">
+                            <form method="GET" action="/forum" class="forum-search-form">
+                                {% if active_category %}<input type="hidden" name="category" value="{{ active_category }}">{% endif %}
+                                <input type="hidden" name="sort" value="{{ active_sort }}">
+                                <input type="text" name="q" value="{{ active_query or '' }}" placeholder="Search threads…" maxlength="100" class="forum-search-input">
+                                <button type="submit" class="save-btn btn-inline">🔍</button>
+                                {% if active_query %}<a href="/forum?sort={{ active_sort }}{% if active_category %}&category={{ active_category }}{% endif %}" class="btn-inline">✕</a>{% endif %}
+                            </form>
+                            <form method="GET" action="/forum" class="forum-sort-form">
+                                {% if active_category %}<input type="hidden" name="category" value="{{ active_category }}">{% endif %}
+                                {% if active_query %}<input type="hidden" name="q" value="{{ active_query }}">{% endif %}
+                                <select name="sort" onchange="this.form.submit()">
+                                    <option value="active"{% if active_sort == 'active' %} selected{% endif %}>🔥 Active</option>
+                                    <option value="new"{% if active_sort == 'new' %} selected{% endif %}>🕐 Newest</option>
+                                    <option value="top"{% if active_sort == 'top' %} selected{% endif %}>🏆 Top</option>
+                                </select>
+                            </form>
+                        </div>
+                    </div>
+
                     {# ---------- Board-style column headers ---------- #}
                     <div class="board-head">
                         <span class="col-score">Score</span>
@@ -123,16 +159,19 @@
 
                     <div class="threads-list board-list">
                         {% for t in threads %}
-                        <div class="thread-row">
+                        <div class="thread-row{% if t.sticky %} sticky{% endif %}">
                             <div class="row-score{% if t.my_vote == 1 %} upvoted{% elif t.my_vote == -1 %} downvoted{% endif %}">
                                 {{ '+' if t.score > 0 else '' }}{{ t.score }}
                             </div>
                             <div class="row-topic">
+                                {% if t.sticky %}<span class="sticky-badge" title="Pinned">📌</span>{% endif %}
+                                {% if t.locked %}<span class="locked-badge" title="Locked">🔒</span>{% endif %}
                                 <a
                                     href="/forum/{{ t.id }}"
                                     class="thread-link"
                                     >{{ t.title }}</a
                                 >
+                                <span class="category-tag">{{ t.category }}</span>
                                 {% if t.image %}
                                 <span class="paperclip" title="has image"
                                     >🖼️</span
@@ -146,11 +185,13 @@
                                 {% endif %}
                                 <div class="thread-meta">
                                     by
+                                    <a href="/user/{{ t.author }}" class="profile-link" data-username="{{ t.author }}">
                                     {{
                                     users.get(t.author,
                                     {}).get('display_name', t.author)
-                                    }}
-                                    • {{ t.timestamp|ts }}
+                                    }}</a>
+                                    &bull; {{ t.timestamp|ts }}
+                                    {% if t.view_count %}&bull; 👁 {{ t.view_count }}{% endif %}
                                 </div>
                             </div>
                             <div class="row-replies">
@@ -168,10 +209,23 @@
                         </div>
                         {% else %}
                         <p class="no-groups board-empty">
-                            No threads yet. Start the first one!
+                            {% if active_query %}No results for "{{ active_query }}".{% else %}No threads yet. Start the first one!{% endif %}
                         </p>
                         {% endfor %}
                     </div>
+
+                    {# ---- Pagination ---- #}
+                    {% if total_pages > 1 %}
+                    <div class="forum-pagination">
+                        {% if page > 1 %}
+                        <a href="/forum?page={{ page - 1 }}&sort={{ active_sort }}{% if active_category %}&category={{ active_category }}{% endif %}{% if active_query %}&q={{ active_query }}{% endif %}" class="save-btn btn-inline">⬅ Prev</a>
+                        {% endif %}
+                        <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+                        {% if page < total_pages %}
+                        <a href="/forum?page={{ page + 1 }}&sort={{ active_sort }}{% if active_category %}&category={{ active_category }}{% endif %}{% if active_query %}&q={{ active_query }}{% endif %}" class="save-btn btn-inline">Next ➡</a>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                 </div>
             </main>
         </div>
@@ -185,6 +239,6 @@
             };
         </script>
         <script src="/static/js/socket.io.min.js?v=1"></script>
-        <script src="/static/js/chat.js?v=13"></script>
+        <script src="/static/js/chat.js?v=14"></script>
     </body>
 </html>

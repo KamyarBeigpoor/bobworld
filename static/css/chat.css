@@ -1650,6 +1650,162 @@ img {
     flex: 1;
 }
 
+/* ---- Forum filter bar / categories / search / pagination ---------- */
+
+.forum-filter-bar {
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.forum-categories {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.cat-pill {
+    display: inline-block;
+    padding: 4px 10px;
+    font-family: var(--font-pixel);
+    font-size: 11px;
+    background: var(--face);
+    box-shadow: var(--bevel-out);
+    color: var(--text);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.cat-pill:hover {
+    background: var(--face-light);
+}
+
+.cat-pill.active {
+    background: var(--titlebar);
+    color: var(--titlebar-text);
+    box-shadow: var(--bevel-in);
+}
+
+.cat-count {
+    font-size: 9px;
+    opacity: 0.8;
+}
+
+.forum-search-sort {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.forum-search-form {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    flex: 1;
+    min-width: 160px;
+}
+
+.forum-search-input {
+    flex: 1;
+    min-width: 120px;
+    font-size: 12px;
+    padding: 3px 6px;
+}
+
+.forum-sort-form select {
+    font-size: 11px;
+    padding: 3px 6px;
+}
+
+.forum-pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 0;
+}
+
+.page-info {
+    font-family: var(--font-pixel);
+    font-size: 11px;
+    color: var(--muted);
+}
+
+/* ---- Thread row enhancements -------------------------------------- */
+
+.thread-row.sticky {
+    background: var(--bubble-sent);
+    border-left: 3px solid var(--titlebar);
+}
+
+.sticky-badge,
+.locked-badge {
+    font-size: 12px;
+    margin-right: 3px;
+}
+
+.category-tag {
+    display: inline-block;
+    padding: 1px 6px;
+    margin-left: 6px;
+    font-family: var(--font-pixel);
+    font-size: 9px;
+    background: var(--face);
+    box-shadow: var(--bevel-in);
+    color: var(--muted);
+    text-transform: uppercase;
+    vertical-align: middle;
+}
+
+/* ---- Post enhancements ------------------------------------------- */
+
+.edited-label {
+    font-size: 10px;
+    color: var(--muted);
+    font-style: italic;
+}
+
+.mod-badge {
+    background: #2e5c34;
+    color: #fff;
+}
+
+.locked-notice {
+    margin-top: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--field);
+    box-shadow: var(--bevel-in);
+}
+
+.inline-flag-form {
+    display: inline;
+}
+
+/* ---- Load older messages button ----------------------------------- */
+
+.load-older-btn {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    text-align: center;
+    font-family: var(--font-pixel);
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--face);
+    box-shadow: var(--bevel-out);
+    cursor: pointer;
+    margin-top: 8px;
+}
+
+.load-older-btn:hover {
+    background: var(--face-light);
+    color: var(--text);
+}
+
 /* ================= PROFILE PAGES =================================== */
 
 .profile-container,
@@ -1882,8 +2038,35 @@ img {
         padding-left: 7px;
     }
 
-    .forum-container {
+.forum-container {
         padding: 10px;
+    }
+
+    .forum-filter-bar {
+        gap: 6px;
+    }
+
+    .forum-categories {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding-bottom: 4px;
+    }
+
+    .forum-search-sort {
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .forum-search-form {
+        min-width: 0;
+    }
+
+    .forum-pagination {
+        gap: 6px;
+    }
+
+    .thread-row.sticky {
+        border-left-width: 2px;
     }
 
     .post {

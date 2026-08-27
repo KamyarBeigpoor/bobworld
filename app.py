@@ -10,7 +10,7 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from database import Database
+from database import Database, FORUM_CATEGORIES
 
 import base64
 import atexit
@@ -438,6 +438,10 @@ def sanitize_reply(reply_data):
         return None
 
     cleaned = {}
+
+    mid = reply.get("id")
+    if isinstance(mid, str):
+        cleaned["id"] = mid[:64]
 
     sender = reply.get("from")
     if isinstance(sender, str):
@@ -1049,6 +1053,47 @@ def dm_key(a, b):
 
 
 # ============================================================
+# MESSAGE PAGINATION API
+# ============================================================
+
+@app.route("/api/messages")
+def api_messages():
+    """Auth-protected endpoint for loading older messages (pagination)."""
+    me = session.get("user")
+    if not me:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    chat_type = request.args.get("chat_type", "")
+    chat_id = request.args.get("chat_id", "")
+    before = request.args.get("before")
+    limit = min(int(request.args.get("limit", 50)), 100)
+
+    if before:
+        before = int(before)
+
+    # Authorization mirrors the old streaming endpoints
+    if chat_type == "dm":
+        partner = chat_id.replace("__", "").replace(me, "")
+        if partner == me or not db.user_exists(partner):
+            return jsonify({"error": "Not authorized"}), 403
+    elif chat_type == "group":
+        group = db.get_group(chat_id)
+        if not group or me not in group.get("members", []):
+            return jsonify({"error": "Not authorized"}), 403
+    elif chat_type != "global":
+        return jsonify({"error": "Invalid chat type"}), 400
+
+    messages = db.get_messages(chat_type, chat_id, limit=limit, before=before)
+    has_older = len(messages) == limit
+    oldest_ts = messages[0]["timestamp"] if messages else None
+    return jsonify({
+        "messages": messages,
+        "has_older": has_older,
+        "oldest_timestamp": oldest_ts,
+    })
+
+
+# ============================================================
 # DELETE MESSAGE
 # ============================================================
 
@@ -1157,19 +1202,24 @@ def users_list():
     current = session["user"]
 
     users_dict = db.all_users()
-
+    fm = db.friend_map(current)
     banned_set = db.all_bans()
 
     users = []
     for username, data in users_dict.items():
         if username == current:
             continue
+        raw_status = fm.get(username, "none")
+        if raw_status == "accepted":
+            friend_status = "friends"
+        else:
+            friend_status = db.friendship_status(current, username)
         users.append({
             "username": username,
             "display_name": data.get("display_name", username),
             "avatar": data.get("avatar"),
             "bio": data.get("bio", ""),
-            "friend_status": db.friendship_status(current, username),
+            "friend_status": friend_status,
             "is_mod": is_moderator(username),
         })
 
@@ -1486,7 +1536,7 @@ def leave_group(group_id):
 #
 # Classic board layout: threads with like/dislike scores, and
 # reddit-style NESTED replies (reply-to-reply). Optional image per
-# post; no live streaming (refresh to see new posts).
+# post; categories, search, sorting, pagination, sticky/lock/edit.
 # ============================================================
 
 MAX_THREAD_TITLE_LENGTH = 150
@@ -1514,6 +1564,15 @@ def ts_format(ms):
     return time.strftime("%Y-%m-%d %H:%M", t)
 
 
+@app.template_filter("ts_edit")
+def ts_edit_format(ms):
+    """Show 'edited YYYY-MM-DD HH:MM' for forum posts."""
+    if not ms:
+        return ""
+    t = time.localtime(int(ms) / 1000)
+    return time.strftime("%Y-%m-%d %H:%M", t)
+
+
 def _forum_post_body():
     """Validates shared reply/thread body + image fields.
     Returns (body, image_filename_or_None, error_response_or_None)."""
@@ -1534,13 +1593,31 @@ def _forum_post_body():
     return body, image, None
 
 
+FORUM_THREADS_PER_PAGE = 15
+
+
 @app.route("/forum")
 def forum():
 
     current = session["user"]
 
-    threads = db.list_forum_threads(viewer=current)
+    category = request.args.get("category", "").strip() or None
+    query_text = request.args.get("q", "").strip() or None
+    sort = request.args.get("sort", "active").strip()
+    if sort not in ("active", "new", "top"):
+        sort = "active"
+    page = max(1, int(request.args.get("page", 1)))
+    offset = (page - 1) * FORUM_THREADS_PER_PAGE
+
+    total = db.count_forum_threads(category=category, query_text=query_text)
+    total_pages = max(1, (total + FORUM_THREADS_PER_PAGE - 1) // FORUM_THREADS_PER_PAGE)
+
+    threads = db.list_forum_threads(
+        viewer=current, category=category, query_text=query_text,
+        sort=sort, limit=FORUM_THREADS_PER_PAGE, offset=offset,
+    )
     users = db.all_users()
+    cat_counts = db.get_forum_thread_counts_by_category()
     user_data = users.get(current) or {}
 
     return render_template(
@@ -1552,6 +1629,14 @@ def forum():
         display_name=user_data.get("display_name", current),
         avatar=user_data.get("avatar"),
         bio=user_data.get("bio", ""),
+        categories=FORUM_CATEGORIES,
+        cat_counts=cat_counts,
+        active_category=category,
+        active_sort=sort,
+        active_query=query_text,
+        page=page,
+        total_pages=total_pages,
+        is_mod=is_moderator(current),
     )
 
 
@@ -1578,15 +1663,18 @@ def forum_new():
         if not body and not image:
             return redirect("/forum")
 
+        category = (request.form.get("category") or "general").strip()
+        if category not in FORUM_CATEGORIES:
+            category = "general"
+
         thread_id = uuid.uuid4().hex
 
         db.create_forum_thread(
-            thread_id, current, current_uid(), title, body, image
+            thread_id, current, current_uid(), title, body, image, category
         )
 
         return redirect(f"/forum/{thread_id}")
 
-    # The new-thread form now lives directly on the forum page.
     return redirect("/forum")
 
 
@@ -1595,7 +1683,7 @@ def forum_thread(thread_id):
 
     current = session["user"]
 
-    thread = db.get_forum_thread(thread_id, viewer=current)
+    thread = db.get_forum_thread(thread_id, viewer=current, increment_view=True)
 
     if not thread:
         abort(404)
@@ -1615,6 +1703,7 @@ def forum_thread(thread_id):
         display_name=user_data.get("display_name", current),
         avatar=user_data.get("avatar"),
         bio=user_data.get("bio", ""),
+        categories=FORUM_CATEGORIES,
     )
 
 
@@ -1623,8 +1712,13 @@ def forum_reply(thread_id):
 
     current = session["user"]
 
-    if not db.get_forum_thread(thread_id):
+    thread = db.get_forum_thread(thread_id)
+
+    if not thread:
         abort(404)
+
+    if thread.get("locked"):
+        return "This thread is locked", 403
 
     body, image, error = _forum_post_body()
 
@@ -1639,11 +1733,9 @@ def forum_reply(thread_id):
     if parent_id:
         parent = db.get_forum_reply(parent_id)
 
-        # The parent must belong to THIS thread.
         if not parent or parent["thread_id"] != thread_id:
             return "Invalid parent reply", 400
 
-        # Cap nesting depth so the tree stays readable.
         if db.get_reply_depth(parent_id) >= MAX_REPLY_DEPTH:
             return "Reply nesting is too deep here", 400
 
@@ -1656,6 +1748,29 @@ def forum_reply(thread_id):
         body,
         image,
     )
+
+    # Notify thread author (if not self)
+    if thread["author"] != current:
+        preview = (body or "📎 attachment")[:80]
+        push_notification(
+            thread["author"],
+            "forum",
+            current,
+            f"replied in \"{thread['title']}\": {preview}",
+            f"/forum/{thread_id}",
+        )
+
+    # Notify parent reply author (if different from thread author and self)
+    if parent_id:
+        parent_author, _, _, _ = db.get_reply_author(parent_id)
+        if parent_author and parent_author != current and parent_author != thread["author"]:
+            push_notification(
+                parent_author,
+                "forum",
+                current,
+                f"replied to your post in \"{thread['title']}\": {(body or '📎 attachment')[:60]}",
+                f"/forum/{thread_id}#reply-{parent_id}",
+            )
 
     return redirect(f"/forum/{thread_id}")
 
@@ -1761,6 +1876,97 @@ def forum_delete_reply(reply_id):
                 pass
 
     return redirect(f"/forum/{reply['thread_id']}")
+
+
+@app.route("/forum/edit/thread/<thread_id>", methods=["POST"])
+def forum_edit_thread(thread_id):
+
+    current = session["user"]
+
+    thread = db.get_forum_thread(thread_id)
+
+    if not thread:
+        return jsonify({"error": "Thread not found"}), 404
+
+    uid = current_uid()
+    owns = (
+        thread["author_id"] == uid
+        if thread.get("author_id")
+        else thread["author"] == current
+    )
+
+    if not owns and not is_moderator(current):
+        return jsonify({"error": "Cannot edit this thread"}), 403
+
+    body = (request.form.get("body") or "").strip()
+    title = (request.form.get("title") or "").strip()
+
+    if not body:
+        return jsonify({"error": "Body cannot be empty"}), 400
+
+    if not title:
+        title = thread["title"]
+
+    if len(title) > MAX_THREAD_TITLE_LENGTH:
+        return jsonify({"error": "Title too long"}), 400
+
+    db.edit_forum_thread(thread_id, body, title=title)
+
+    return redirect(f"/forum/{thread_id}")
+
+
+@app.route("/forum/edit/reply/<reply_id>", methods=["POST"])
+def forum_edit_reply(reply_id):
+
+    current = session["user"]
+
+    reply = db.get_forum_reply(reply_id)
+
+    if not reply:
+        return jsonify({"error": "Reply not found"}), 404
+
+    uid = current_uid()
+    owns = (
+        reply["author_id"] == uid
+        if reply.get("author_id")
+        else reply["author"] == current
+    )
+
+    if not owns and not is_moderator(current):
+        return jsonify({"error": "Cannot edit this reply"}), 403
+
+    body = (request.form.get("body") or "").strip()
+
+    if not body:
+        return jsonify({"error": "Body cannot be empty"}), 400
+
+    db.edit_forum_reply(reply_id, body)
+
+    return redirect(f"/forum/{reply['thread_id']}")
+
+
+@app.route("/forum/<thread_id>/flag", methods=["POST"])
+def forum_thread_flag(thread_id):
+
+    current = session["user"]
+
+    if not is_moderator(current):
+        return jsonify({"error": "Moderator access required"}), 403
+
+    thread = db.get_forum_thread(thread_id)
+
+    if not thread:
+        return jsonify({"error": "Thread not found"}), 404
+
+    flag = (request.form.get("flag") or "").strip()
+    value = request.form.get("value", "").strip() in ("1", "true", "on")
+
+    if flag not in ("sticky", "locked"):
+        return jsonify({"error": "Invalid flag"}), 400
+
+    db.set_thread_flag(thread_id, flag, value)
+
+    return redirect(f"/forum/{thread_id}")
 
 
 # ============================================================

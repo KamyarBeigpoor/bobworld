@@ -11,7 +11,7 @@
             rel="icon"
             href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
         />
-        <link rel="stylesheet" href="/static/css/chat.css?v=11" />
+        <link rel="stylesheet" href="/static/css/chat.css?v=12" />
     </head>
     <body data-user="{{ user }}" data-display="{{ display_name }}">
         <div class="app">
@@ -59,6 +59,22 @@
                     <button class="hamburger" id="hamburgerBtn">☰</button>
                     <h2>{{ thread.title }}</h2>
                     <div class="group-admin-controls">
+                        {% if is_mod %}
+                        <form method="POST" action="/forum/{{ thread.id }}/flag" class="inline-flag-form">
+                            <input type="hidden" name="flag" value="sticky">
+                            <input type="hidden" name="value" value="{{ '0' if thread.sticky else '1' }}">
+                            <button type="submit" class="admin-btn" title="{{ 'Unpin' if thread.sticky else 'Pin' }}">
+                                {{ '📌' if thread.sticky else '📍' }}
+                            </button>
+                        </form>
+                        <form method="POST" action="/forum/{{ thread.id }}/flag" class="inline-flag-form">
+                            <input type="hidden" name="flag" value="locked">
+                            <input type="hidden" name="value" value="{{ '0' if thread.locked else '1' }}">
+                            <button type="submit" class="admin-btn" title="{{ 'Unlock' if thread.locked else 'Lock' }}">
+                                {{ '🔓' if thread.locked else '🔒' }}
+                            </button>
+                        </form>
+                        {% endif %}
                         {% if thread.author == user or is_mod %}
                         <form
                             method="POST"
@@ -122,12 +138,17 @@
                                     {% if is_op %}
                                     <span class="replies-badge">OP</span>
                                     {% endif %}
+                                    {% if node.author != user and is_mod %}
+                                    <span class="replies-badge mod-badge">MOD</span>
+                                    {% endif %}
                                 </span>
                                 <span class="when"
                                     >{{ node.timestamp|ts }}</span
                                 >
-                                {% if not is_op and (node.author == user or
-                                is_mod) %}
+                                {% if node.edited_at %}
+                                <span class="edited-label" title="Edited {{ node.edited_at|ts_edit }}">(edited)</span>
+                                {% endif %}
+                                {% if not is_op and (node.author == user or is_mod) %}
                                 <form
                                     method="POST"
                                     action="/forum/reply/{{ node.id }}/delete"
@@ -142,6 +163,23 @@
                                             user else
                                             'Moderator delete'
                                         }}"
+                                    >
+                                        delete
+                                    </button>
+                                </form>
+                                {% endif %}
+                                {% if is_op and (node.author == user or is_mod) %}
+                                <form
+                                    method="POST"
+                                    action="/forum/{{ node.id }}/delete"
+                                    onsubmit="return confirm('Delete this thread and ALL replies?')"
+                                    class="post-del-form"
+                                >
+                                    <input type="hidden" name="next" value="/forum">
+                                    <button
+                                        type="submit"
+                                        class="post-del"
+                                        title="Delete thread"
                                     >
                                         delete
                                     </button>
@@ -194,6 +232,7 @@
                                         >{{ node.dislikes }}</span
                                     >
                                 </button>
+                                {% if not thread.locked %}
                                 <button
                                     type="button"
                                     class="reply-toggle mini-btn"
@@ -203,9 +242,22 @@
                                 >
                                     ↩ Reply
                                 </button>
+                                {% endif %}
+                                {% if node.author == user or is_mod %}
+                                <button
+                                    type="button"
+                                    class="edit-toggle mini-btn"
+                                    data-target="edit-{{
+                                        'op' if is_op else node.id
+                                    }}"
+                                >
+                                    ✏️ Edit
+                                </button>
+                                {% endif %}
                             </div>
 
                             {# ---- inline reply form (nested) ---- #}
+                            {% if not thread.locked %}
                             <div
                                 class="inline-reply"
                                 id="form-{{ 'op' if is_op else node.id }}"
@@ -264,6 +316,54 @@
                                     </div>
                                 </form>
                             </div>
+                            {% else %}
+                            {% if is_op %}
+                            <p class="locked-notice">🔒 This thread is locked. New replies are disabled.</p>
+                            {% endif %}
+                            {% endif %}
+
+                            {# ---- inline edit form ---- #}
+                            <div
+                                class="inline-reply"
+                                id="edit-{{ 'op' if is_op else node.id }}"
+                                hidden
+                            >
+                                <form
+                                    method="POST"
+                                    action="/forum/edit/{% if is_op %}thread/{{ thread.id }}{% else %}reply/{{ node.id }}{% endif %}"
+                                >
+                                    <div class="form-group">
+                                        <textarea
+                                            name="body"
+                                            maxlength="5000"
+                                            required
+                                        >{{ node.body }}</textarea>
+                                    </div>
+                                    {% if is_op %}
+                                    <div class="form-group">
+                                        <label>Title</label>
+                                        <input type="text" name="title" value="{{ thread.title }}" maxlength="150" required>
+                                    </div>
+                                    {% endif %}
+                                    <div class="inline-reply-actions">
+                                        <button
+                                            type="submit"
+                                            class="save-btn btn-inline"
+                                        >
+                                            Save Edit
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="back-btn btn-inline inline-cancel"
+                                            data-target="edit-{{
+                                                'op' if is_op else node.id
+                                            }}"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
 
                             {# ---- children (nested replies) ---- #}
                             {% if node.children %}
@@ -314,7 +414,6 @@
                     var targetId = widget.dataset.target;
                     var voteValue = parseInt(btn.dataset.vote, 10);
 
-                    // Clicking your active vote removes it (toggle).
                     var payload = {
                         target_type: targetType,
                         target_id: targetId,
@@ -341,7 +440,6 @@
                         }
                         var data = await resp.json();
 
-                        // Update EVERY widget bound to this target.
                         document
                             .querySelectorAll(
                                 '.vote-widget[data-type="' +
@@ -384,8 +482,8 @@
                 });
             });
 
-            // ================= INLINE REPLY FORMS ==================
-            document.querySelectorAll(".reply-toggle").forEach(function (btn) {
+            // ================= INLINE REPLY/EDIT FORMS ==================
+            document.querySelectorAll(".reply-toggle, .edit-toggle").forEach(function (btn) {
                 btn.addEventListener("click", function () {
                     var form = document.getElementById(btn.dataset.target);
                     if (form) {
@@ -410,6 +508,6 @@
             });
         </script>
         <script src="/static/js/socket.io.min.js?v=1"></script>
-        <script src="/static/js/chat.js?v=13"></script>
+        <script src="/static/js/chat.js?v=14"></script>
     </body>
 </html>
