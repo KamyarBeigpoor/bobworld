@@ -6,6 +6,7 @@
     padding: 4px;
     display: inline-block;
     max-width: 100%;
+    box-sizing: border-box;
 }
 
 .retro-video-player video {
@@ -20,10 +21,14 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 5px 3px 3px 3px;
+    padding: 5px 4px 4px 4px;
     background: var(--surface);
     border: var(--border-width) inset var(--button-face);
     margin-top: 4px;
+    box-sizing: border-box;
+    min-width: 0;
+    width: 100%;
+    flex-wrap: nowrap;
 }
 
 .retro-video-btn {
@@ -43,6 +48,8 @@
     padding: 0;
     transition: var(--transition);
     flex-shrink: 0;
+    box-sizing: border-box;
+    min-width: 0;
 }
 
 .retro-video-btn:active {
@@ -57,14 +64,17 @@
 /* Secondary controls (mute / fullscreen): deliberately smaller than
    the play button so the bar feels less clunky. */
 .retro-video-btn-sm {
-    width: 22px;
-    height: 18px;
-    font-size: 11px;
+    width: 24px;
+    height: 20px;
+    font-size: 12px;
+    box-sizing: border-box;
 }
 
 .retro-progress-container {
-    flex: 1;
-    min-width: 60px;
+    flex: 1 1 0;
+    min-width: 50px;
+    display: flex;
+    align-items: center;
 }
 
 .retro-progress-bar {
@@ -126,14 +136,16 @@
     }
     .retro-video-btn {
         width: 32px;
-        height: 26px;
-        font-size: 13px;
+        height: 28px;
+        font-size: 14px;
         touch-action: manipulation;
+        box-sizing: border-box;
     }
     .retro-video-btn-sm {
         width: 26px;
-        height: 21px;
-        font-size: 11px;
+        height: 22px;
+        font-size: 12px;
+        box-sizing: border-box;
     }
     .retro-time-display {
         font-size: 0.58rem;
@@ -141,7 +153,7 @@
         padding: 0 2px;
     }
     .retro-progress-bar {
-        height: 12px; /* comfortable touch target */
+        height: 14px; /* comfortable touch target */
     }
 }
 
@@ -150,12 +162,15 @@
         font-size: 0.54rem;
     }
     .retro-video-btn {
-        width: 29px;
-        height: 25px;
+        width: 28px;
+        height: 26px;
     }
     .retro-video-btn-sm {
-        width: 24px;
-        height: 20px;
+        width: 22px;
+        height: 19px;
+    }
+    .retro-progress-bar {
+        height: 12px;
     }
 }
 /* Fullscreen mode styling for the container */
