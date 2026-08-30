@@ -1054,27 +1054,56 @@ class Database:
         }
 
     # ------------------------------------------------------------------
-    # FORUM: vote helpers
+    # FORUM
+    #
+    # Reddit-style boards: threads in categories, nested replies,
+    # likes/dislikes. Tables: forum_threads / forum_replies / forum_votes.
+    #
+    # PORTABILITY NOTE: PostgreSQL only accepts a *bare* output-column
+    # alias in ORDER BY. An alias used inside an expression, e.g.
+    #     ORDER BY COALESCE(last_activity, timestamp) DESC
+    # raises "column last_activity does not exist" on Postgres even
+    # though SQLite accepts it. Every sort below therefore repeats the
+    # full SQL expression instead of an alias.
     # ------------------------------------------------------------------
 
     _VOTE_TABLES = {"thread": "forum_threads", "reply": "forum_replies"}
 
     def _vote_select(self, target_type):
+        """score/likes/dislikes subselects for one forum row."""
         if target_type not in self._VOTE_TABLES:
-            raise ValueError("Invalid target_type")
+            raise ValueError("Invalid vote target type")
         table = self._VOTE_TABLES[target_type]
         return (
             "(SELECT COALESCE(SUM(v.value), 0) FROM forum_votes v"
-            f"  WHERE v.target_type = ?"
-            f"  AND v.target_id = {table}.id) AS score,"
+            f"  WHERE v.target_type = ? AND v.target_id = {table}.id)"
+            " AS score,"
             " (SELECT COUNT(*) FROM forum_votes v"
-            f"  WHERE v.target_type = ?"
-            f"  AND v.target_id = {table}.id AND v.value = 1)"
-            " AS likes,"
+            f"  WHERE v.target_type = ? AND v.target_id = {table}.id"
+            "  AND v.value = 1) AS likes,"
             " (SELECT COUNT(*) FROM forum_votes v"
-            f"  WHERE v.target_type = ?"
-            f"  AND v.target_id = {table}.id AND v.value = -1)"
-            " AS dislikes"
+            f"  WHERE v.target_type = ? AND v.target_id = {table}.id"
+            "  AND v.value = -1) AS dislikes"
+        )
+
+    def _vote_score_expr(self, target_type):
+        """Score subselect WITHOUT an alias - safe inside ORDER BY."""
+        if target_type not in self._VOTE_TABLES:
+            raise ValueError("Invalid vote target type")
+        table = self._VOTE_TABLES[target_type]
+        return (
+            "(SELECT COALESCE(SUM(v.value), 0) FROM forum_votes v"
+            f"  WHERE v.target_type = '{target_type}'"
+            f"  AND v.target_id = {table}.id)"
+        )
+
+    def _last_activity_expr(self):
+        """A thread's latest bump time: newest reply timestamp, falling
+        back to the thread's own timestamp. Alias-free for ORDER BY."""
+        return (
+            "COALESCE((SELECT MAX(r.timestamp) FROM forum_replies r"
+            "  WHERE r.thread_id = forum_threads.id),"
+            " forum_threads.timestamp)"
         )
 
     @staticmethod
@@ -1103,19 +1132,50 @@ class Database:
     # FORUM: threads
     # ------------------------------------------------------------------
 
+    _FORUM_SORTS = {
+        "active": "forum_threads.sticky DESC, {activity} DESC",
+        "new": "forum_threads.sticky DESC, forum_threads.timestamp DESC",
+        "top": "forum_threads.sticky DESC, {score} DESC,"
+               " forum_threads.timestamp DESC",
+    }
+
+    def _query_forum_threads(self, where_sql, order_sql, sql_params,
+                             limit=None, offset=None):
+        """The thread SELECT shared by list/search/lookup. The three vote
+        placeholders lead the parameter tuple, then any WHERE params,
+        then LIMIT/OFFSET."""
+        sql = (
+            "SELECT forum_threads.*,"
+            " (SELECT COUNT(*) FROM forum_replies r"
+            "   WHERE r.thread_id = forum_threads.id) AS reply_count,"
+            f" {self._last_activity_expr()} AS last_activity,"
+            f" {self._vote_select('thread')}"
+            " FROM forum_threads"
+            f" WHERE {where_sql}"
+            f" ORDER BY {order_sql}"
+        )
+        params = ["thread", "thread", "thread", *sql_params]
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            params += [limit, max(0, offset or 0)]
+        with self._lock:
+            return self.backend.query(sql, tuple(params))
+
     def create_forum_thread(self, thread_id, author, author_id, title, body,
                             image=None, category="general"):
         with self._lock:
             self.backend.execute(
                 "INSERT INTO forum_threads (id, author, author_id, title,"
-                " body, image, category, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                " body, image, category, timestamp)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (thread_id, author, author_id, title, body, image,
                  category, int(time.time() * 1000)),
             )
 
-    def list_forum_threads(self, viewer=None, category=None, query_text=None,
-                           sort="active", limit=20, offset=0):
-        """Filtered, sorted, paginated thread list. Returns list of dicts."""
+    def list_forum_threads(self, viewer=None, category=None,
+                           query_text=None, sort="active", limit=20,
+                           offset=0):
+        """Filtered, sorted, paginated thread list (list of dicts)."""
         where = ["1 = 1"]
         params = []
         if category:
@@ -1123,40 +1183,25 @@ class Database:
             params.append(category)
         if query_text:
             needle = f"%{query_text.lower()}%"
-            where.append("(LOWER(forum_threads.title) LIKE ? OR LOWER(forum_threads.body) LIKE ?)")
+            where.append("(LOWER(forum_threads.title) LIKE ?"
+                         " OR LOWER(forum_threads.body) LIKE ?)")
             params += [needle, needle]
 
-        where_sql = " AND ".join(where)
+        order = self._FORUM_SORTS.get(sort, self._FORUM_SORTS["active"])
+        order = order.format(
+            activity=self._last_activity_expr(),
+            score=self._vote_score_expr("thread"),
+        )
 
-        _ORDER_MAP = {
-            "active": "forum_threads.sticky DESC, COALESCE(last_activity, forum_threads.timestamp) DESC",
-            "new": "forum_threads.sticky DESC, forum_threads.timestamp DESC",
-            "top": "forum_threads.sticky DESC, score DESC, forum_threads.timestamp DESC",
-        }
-        order = _ORDER_MAP.get(sort, _ORDER_MAP["active"])
-
-        with self._lock:
-            rows = self.backend.query(
-                f"SELECT forum_threads.*,"
-                f" (SELECT COUNT(*) FROM forum_replies r"
-                f"   WHERE r.thread_id = forum_threads.id) AS reply_count,"
-                f" (SELECT MAX(r2.timestamp) FROM forum_replies r2"
-                f"   WHERE r2.thread_id = forum_threads.id) AS last_activity,"
-                f" {self._vote_select('thread')}"
-                f" FROM forum_threads"
-                f" WHERE {where_sql}"
-                f" ORDER BY {order}"
-                f" LIMIT ? OFFSET ?",
-                ("thread", "thread", "thread", *params, limit, offset),
-            )
-            my_votes = self._my_votes_map(
-                "thread", [r["id"] for r in rows], viewer
-            )
+        rows = self._query_forum_threads(
+            " AND ".join(where), order, params, limit, offset
+        )
+        my_votes = self._my_votes_map(
+            "thread", [r["id"] for r in rows], viewer
+        )
         threads = []
         for row in rows:
             thread = self._int_votes(dict(row))
-            thread["last_activity"] = thread.get("last_activity") \
-                or thread["timestamp"]
             thread["my_vote"] = my_votes.get(thread["id"], 0)
             threads.append(thread)
         return threads
@@ -1173,7 +1218,8 @@ class Database:
             params += [needle, needle]
         with self._lock:
             row = self.backend.query_one(
-                f"SELECT COUNT(*) AS n FROM forum_threads WHERE {' AND '.join(where)}",
+                f"SELECT COUNT(*) AS n FROM forum_threads"
+                f" WHERE {' AND '.join(where)}",
                 tuple(params),
             )
         return row["n"]
@@ -1182,68 +1228,73 @@ class Database:
         if increment_view:
             with self._lock:
                 self.backend.execute(
-                    "UPDATE forum_threads SET view_count = view_count + 1 WHERE id = ?",
+                    "UPDATE forum_threads SET view_count = view_count + 1"
+                    " WHERE id = ?",
                     (thread_id,),
                 )
-        with self._lock:
-            row = self.backend.query_one(
-                "SELECT forum_threads.*,"
-                f" {self._vote_select('thread')}"
-                " FROM forum_threads WHERE forum_threads.id = ?",
-                ("thread", "thread", "thread", thread_id),
-            )
-        if row is None:
+        rows = self._query_forum_threads(
+            "forum_threads.id = ?",
+            "forum_threads.timestamp DESC",
+            [thread_id],
+            limit=1,
+        )
+        if not rows:
             return None
-        thread = self._int_votes(dict(row))
+        thread = self._int_votes(dict(rows[0]))
         thread["my_vote"] = self._my_votes_map(
             "thread", [thread_id], viewer
         ).get(thread_id, 0)
         return thread
 
     def get_forum_thread_counts_by_category(self):
-        """Returns {category: count} for the sidebar filter."""
+        """{category: count} for the filter pills."""
         with self._lock:
             rows = self.backend.query(
-                "SELECT category, COUNT(*) AS n FROM forum_threads GROUP BY category"
+                "SELECT category, COUNT(*) AS n FROM forum_threads"
+                " GROUP BY category"
             )
         return {r["category"]: r["n"] for r in rows}
+
+    # ------------------------------------------------------------------
+    # FORUM: editing, moderator flags, ownership lookups
+    # ------------------------------------------------------------------
 
     def edit_forum_thread(self, thread_id, body, title=None):
         with self._lock:
             if title is not None:
                 self.backend.execute(
-                    "UPDATE forum_threads SET body = ?, title = ?, edited_at = ? WHERE id = ?",
+                    "UPDATE forum_threads"
+                    " SET body = ?, title = ?, edited_at = ? WHERE id = ?",
                     (body, title, int(time.time() * 1000), thread_id),
                 )
             else:
                 self.backend.execute(
-                    "UPDATE forum_threads SET body = ?, edited_at = ? WHERE id = ?",
+                    "UPDATE forum_threads SET body = ?, edited_at = ?"
+                    " WHERE id = ?",
                     (body, int(time.time() * 1000), thread_id),
                 )
 
     def edit_forum_reply(self, reply_id, body):
         with self._lock:
             self.backend.execute(
-                "UPDATE forum_replies SET body = ?, edited_at = ? WHERE id = ?",
+                "UPDATE forum_replies SET body = ?, edited_at = ?"
+                " WHERE id = ?",
                 (body, int(time.time() * 1000), reply_id),
             )
 
     def set_thread_flag(self, thread_id, flag, value):
-        """Set sticky or locked flag on a thread. flag: 'sticky'|'locked', value: bool."""
+        """Set sticky or locked flag on a thread.
+        flag: 'sticky' | 'locked', value: bool."""
         if flag not in ("sticky", "locked"):
             raise ValueError("Invalid flag")
-        if flag == "sticky":
-            column_sql, col_value = "sticky", (1 if value else 0)
-        else:
-            column_sql, col_value = "locked", (1 if value else 0)
         with self._lock:
             self.backend.execute(
-                f"UPDATE forum_threads SET {column_sql} = ? WHERE id = ?",
-                (col_value, thread_id),
+                f"UPDATE forum_threads SET {flag} = ? WHERE id = ?",
+                (1 if value else 0, thread_id),
             )
 
     def get_thread_author(self, thread_id):
-        """Returns (author, author_id) tuple or (None, None)."""
+        """(author, author_id) tuple, or (None, None) if gone."""
         with self._lock:
             row = self.backend.query_one(
                 "SELECT author, author_id FROM forum_threads WHERE id = ?",
@@ -1254,15 +1305,17 @@ class Database:
         return row["author"], row.get("author_id")
 
     def get_reply_author(self, reply_id):
-        """Returns (author, author_id) tuple or (None, None)."""
+        """(author, author_id, thread_id, parent_id), or all None."""
         with self._lock:
             row = self.backend.query_one(
-                "SELECT author, author_id, thread_id, parent_id FROM forum_replies WHERE id = ?",
+                "SELECT author, author_id, thread_id, parent_id"
+                " FROM forum_replies WHERE id = ?",
                 (reply_id,),
             )
         if row is None:
             return None, None, None, None
-        return row["author"], row.get("author_id"), row.get("thread_id"), row.get("parent_id")
+        return (row["author"], row.get("author_id"),
+                row.get("thread_id"), row.get("parent_id"))
 
     # ------------------------------------------------------------------
     # FORUM: replies (nested, reddit-style)
@@ -1306,11 +1359,11 @@ class Database:
                         author_id, body, image=None):
         with self._lock:
             self.backend.execute(
-                "INSERT INTO forum_replies (id, thread_id, parent_id, author,"
-                " author_id, body, image, timestamp)"
+                "INSERT INTO forum_replies (id, thread_id, parent_id,"
+                " author, author_id, body, image, timestamp)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (reply_id, thread_id, parent_id, author, author_id, body,
-                 image, int(time.time() * 1000)),
+                (reply_id, thread_id, parent_id, author, author_id,
+                 body, image, int(time.time() * 1000)),
             )
 
     def get_forum_reply(self, reply_id, viewer=None):
@@ -1346,7 +1399,7 @@ class Database:
         return depth
 
     def _collect_reply_subtree(self, reply_id):
-        """Returns ([subtree reply ids incl. itself], {image filenames})."""
+        """([subtree reply ids incl. itself], {image filenames})."""
         collected = []
         images = set()
         frontier = [reply_id]
@@ -1370,7 +1423,7 @@ class Database:
 
     def delete_forum_reply(self, reply_id):
         """Deletes a reply and ALL nested descendants + their votes.
-        Returns deleted reply dict (with '_deleted_images') or None."""
+        Returns the deleted reply dict (with '_deleted_images') or None."""
         reply = self.get_forum_reply(reply_id)
         if reply is None:
             return None
@@ -1392,7 +1445,7 @@ class Database:
 
     def delete_forum_thread(self, thread_id):
         """Deletes thread + all replies + all votes.
-        Returns list of image filenames."""
+        Returns the list of attachment filenames to remove."""
         with self._lock:
             rows = self.backend.query(
                 "SELECT image FROM forum_threads WHERE id = ?"
@@ -1408,7 +1461,8 @@ class Database:
                 if reply_rows:
                     marks = ",".join("?" for _ in reply_rows)
                     self.backend.execute(
-                        f"DELETE FROM forum_votes WHERE target_type = 'reply'"
+                        f"DELETE FROM forum_votes"
+                        f" WHERE target_type = 'reply'"
                         f" AND target_id IN ({marks})",
                         [r["id"] for r in reply_rows],
                     )

@@ -37,9 +37,7 @@
                 </div>
                 <nav class="sidebar-nav">
                     <a href="/chat" class="nav-item">🌍 Global Chat</a>
-                    <a href="/friends" class="nav-item">
-                        🫂 Friends</a
-                    >
+                    <a href="/friends" class="nav-item">🫂 Friends</a>
                     <a href="/users" class="nav-item">👥 Users</a>
                     <a href="/groups" class="nav-item">🏡 Groups</a>
                     <button id="themeToggle" class="nav-item">
@@ -122,9 +120,7 @@
                             />
                             {% else %}
                             <div class="post-avatar-default">
-                                {{
-                                author_data.get('display_name',
-                                node.author)[0]|upper }}
+                                {{ author_data.get('display_name', node.author)[0]|upper }}
                             </div>
                             {% endif %}
                             <div class="post-author">@{{ node.author }}</div>
@@ -132,9 +128,7 @@
                         <div class="post-main">
                             <div class="post-head">
                                 <span class="who">
-                                    {{
-                                    author_data.get('display_name',
-                                    node.author) }}
+                                    {{ author_data.get('display_name', node.author) }}
                                     {% if is_op %}
                                     <span class="replies-badge">OP</span>
                                     {% endif %}
@@ -142,9 +136,7 @@
                                     <span class="replies-badge mod-badge">MOD</span>
                                     {% endif %}
                                 </span>
-                                <span class="when"
-                                    >{{ node.timestamp|ts }}</span
-                                >
+                                <span class="when">{{ node.timestamp|ts }}</span>
                                 {% if node.edited_at %}
                                 <span class="edited-label" title="Edited {{ node.edited_at|ts_edit }}">(edited)</span>
                                 {% endif %}
@@ -158,11 +150,7 @@
                                     <button
                                         type="submit"
                                         class="post-del"
-                                        title="{{
-                                            'Delete post' if node.author ==
-                                            user else
-                                            'Moderator delete'
-                                        }}"
+                                        title="{{ 'Delete post' if node.author == user else 'Moderator delete' }}"
                                     >
                                         delete
                                     </button>
@@ -191,12 +179,21 @@
                             {% endif %}
                             {% if node.image %}
                             <div class="post-img">
+                                {% if node.image|is_video %}
+                                <video
+                                    src="/uploads/{{ node.image }}"
+                                    controls
+                                    preload="metadata"
+                                    onclick="window.open(this.src)"
+                                ></video>
+                                {% else %}
                                 <img
                                     src="/uploads/{{ node.image }}"
                                     alt="attachment"
                                     loading="lazy"
                                     onclick="window.open(this.src)"
                                 />
+                                {% endif %}
                             </div>
                             {% endif %}
 
@@ -213,13 +210,10 @@
                                     title="Like"
                                 >
                                     👍
-                                    <span class="like-count"
-                                        >{{ node.likes }}</span
-                                    >
+                                    <span class="like-count">{{ node.likes }}</span>
                                 </button>
                                 <span class="score-num{% if node.my_vote == 1 %} pos{% elif node.my_vote == -1 %} neg{% endif %}">
-                                    {{ '+' if node.score > 0 else '' }}{{
-                                    node.score }}
+                                    {{ '+' if node.score > 0 else '' }}{{ node.score }}
                                 </span>
                                 <button
                                     type="button"
@@ -228,17 +222,13 @@
                                     title="Dislike"
                                 >
                                     👎
-                                    <span class="dislike-count"
-                                        >{{ node.dislikes }}</span
-                                    >
+                                    <span class="dislike-count">{{ node.dislikes }}</span>
                                 </button>
-                                {% if not thread.locked %}
+                                {% if not thread.locked or is_mod %}
                                 <button
                                     type="button"
                                     class="reply-toggle mini-btn"
-                                    data-target="form-{{
-                                        'op' if is_op else node.id
-                                    }}"
+                                    data-target="form-{{ 'op' if is_op else node.id }}"
                                 >
                                     ↩ Reply
                                 </button>
@@ -247,9 +237,7 @@
                                 <button
                                     type="button"
                                     class="edit-toggle mini-btn"
-                                    data-target="edit-{{
-                                        'op' if is_op else node.id
-                                    }}"
+                                    data-target="edit-{{ 'op' if is_op else node.id }}"
                                 >
                                     ✏️ Edit
                                 </button>
@@ -257,7 +245,7 @@
                             </div>
 
                             {# ---- inline reply form (nested) ---- #}
-                            {% if not thread.locked %}
+                            {% if not thread.locked or is_mod %}
                             <div
                                 class="inline-reply"
                                 id="form-{{ 'op' if is_op else node.id }}"
@@ -271,30 +259,26 @@
                                     <input
                                         type="hidden"
                                         name="parent_id"
-                                        value="{% if not is_op %}{{
-                                            node.id
-                                        }}{% endif %}"
+                                        value="{% if not is_op %}{{ node.id }}{% endif %}"
                                     />
                                     <div class="form-group">
                                         <textarea
                                             name="body"
                                             maxlength="5000"
-                                            placeholder="Reply to @{{
-                                                node.author
-                                            }}..."></textarea>
+                                            placeholder="Reply to @{{ node.author }}..."></textarea>
                                     </div>
                                     <div class="form-group">
                                         <label class="avatar-upload-btn">
-                                            🖼️ Image
+                                            📎 Image or video
                                             <input
                                                 type="file"
                                                 name="image"
-                                                accept="image/*"
+                                                accept="image/png,image/jpeg,image/gif,image/webp,image/bmp,video/mp4,video/webm,video/quicktime"
                                                 style="display: none"
                                             />
                                         </label>
                                         <div class="file-hint">
-                                            PNG/JPG/GIF/WebP — optional
+                                            PNG/JPG/GIF/WebP or MP4/WebM — optional
                                         </div>
                                     </div>
                                     <div class="inline-reply-actions">
@@ -307,9 +291,7 @@
                                         <button
                                             type="button"
                                             class="back-btn btn-inline inline-cancel"
-                                            data-target="form-{{
-                                                'op' if is_op else node.id
-                                            }}"
+                                            data-target="form-{{ 'op' if is_op else node.id }}"
                                         >
                                             Cancel
                                         </button>
@@ -355,9 +337,7 @@
                                         <button
                                             type="button"
                                             class="back-btn btn-inline inline-cancel"
-                                            data-target="edit-{{
-                                                'op' if is_op else node.id
-                                            }}"
+                                            data-target="edit-{{ 'op' if is_op else node.id }}"
                                         >
                                             Cancel
                                         </button>

@@ -37,9 +37,7 @@
                 </div>
                 <nav class="sidebar-nav">
                     <a href="/chat" class="nav-item">🌍 Global Chat</a>
-                    <a href="/friends" class="nav-item">
-                        🫂 Friends</a
-                    >
+                    <a href="/friends" class="nav-item">🫂 Friends</a>
                     <a href="/users" class="nav-item">👥 Users</a>
                     <a href="/groups" class="nav-item">🏡 Groups</a>
                     <button id="themeToggle" class="nav-item">
@@ -104,15 +102,17 @@
                             </div>
                             <div class="form-group">
                                 <label class="avatar-upload-btn">
-                                    🖼️ Attach image
+                                    📎 Attach image or video
                                     <input
                                         type="file"
                                         name="image"
-                                        accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"
+                                        accept="image/png,image/jpeg,image/gif,image/webp,image/bmp,video/mp4,video/webm,video/quicktime"
                                         style="display: none"
                                     />
                                 </label>
-                                <div class="file-hint">PNG, JPG, GIF or WebP</div>
+                                <div class="file-hint">
+                                    PNG, JPG, GIF, WebP, MP4 or WebM
+                                </div>
                             </div>
                             <button type="submit" class="save-btn btn-inline">
                                 📋 Post Thread
@@ -167,39 +167,30 @@
                             <div class="row-topic">
                                 {% if t.sticky %}<span class="sticky-badge" title="Pinned">📌</span>{% endif %}
                                 {% if t.locked %}<span class="locked-badge" title="Locked">🔒</span>{% endif %}
-                                <a
-                                    href="/forum/{{ t.id }}"
-                                    class="thread-link"
-                                    >{{ t.title }}</a
-                                >
+                                <a href="/forum/{{ t.id }}" class="thread-link">{{ t.title }}</a>
                                 <span class="category-tag">{{ t.category }}</span>
                                 {% if t.image %}
-                                <span class="paperclip" title="has image"
-                                    >🖼️</span
-                                >
+                                <span class="paperclip" title="{{ 'has video' if t.image|is_video else 'has image' }}">
+                                    {{ '🎬' if t.image|is_video else '🖼️' }}
+                                </span>
                                 {% endif %}
                                 {% if t.body %}
                                 <div class="thread-excerpt">
-                                    {{ t.body[:120] }}{% if t.body|length
-                                    > 120 %}...{% endif %}
+                                    {{ t.body[:120] }}{% if t.body|length > 120 %}...{% endif %}
                                 </div>
                                 {% endif %}
                                 <div class="thread-meta">
                                     by
                                     <a href="/user/{{ t.author }}" class="profile-link" data-username="{{ t.author }}">
-                                    {{
-                                    users.get(t.author,
-                                    {}).get('display_name', t.author)
-                                    }}</a>
+                                        {{ users.get(t.author, {}).get('display_name', t.author) }}
+                                    </a>
                                     &bull; {{ t.timestamp|ts }}
                                     {% if t.view_count %}&bull; 👁 {{ t.view_count }}{% endif %}
                                 </div>
                             </div>
                             <div class="row-replies">
                                 {{ t.reply_count }}<br />
-                                <span class="stat-label">repl{{
-                                    'y' if t.reply_count == 1 else 'ies'
-                                    }}</span>
+                                <span class="stat-label">repl{{ 'y' if t.reply_count == 1 else 'ies' }}</span>
                             </div>
                             <div class="row-votes">
                                 👍 {{ t.likes }}<br />👎 {{ t.dislikes }}

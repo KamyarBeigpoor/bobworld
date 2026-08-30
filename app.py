@@ -272,6 +272,15 @@ FORUM_IMAGE_EXTENSIONS = {
     "bmp",
 }
 
+VIDEO_EXTENSIONS = {
+    "mp4",
+    "webm",
+    "mov",
+}
+
+# Forum posts accept images AND videos.
+FORUM_MEDIA_EXTENSIONS = FORUM_IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
+
 MAX_MESSAGE_LENGTH = 10_000
 MAX_USERNAME_LENGTH = 32
 MAX_DISPLAY_NAME_LENGTH = 64
@@ -385,7 +394,7 @@ def valid_extension(filename, allowed):
     return extension in allowed
 
 
-def save_upload(file, avatar=False, image_only=False):
+def save_upload(file, avatar=False, image_only=False, media_only=False):
 
     if not file or not file.filename:
         return None
@@ -395,7 +404,9 @@ def save_upload(file, avatar=False, image_only=False):
     if not filename:
         return None
 
-    if image_only:
+    if media_only:
+        allowed = FORUM_MEDIA_EXTENSIONS
+    elif image_only:
         allowed = FORUM_IMAGE_EXTENSIONS
     else:
         allowed = (
@@ -1546,16 +1557,18 @@ def leave_group(group_id):
 # ============================================================
 # FORUM
 #
-# Classic board layout: threads with like/dislike scores, and
-# reddit-style NESTED replies (reply-to-reply). Optional image per
-# post; categories, search, sorting, pagination, sticky/lock/edit.
+# Reddit-style boards: threads in categories with optional image OR
+# video attachment, nested replies (reply-to-reply), likes/dislikes,
+# search, sorting, pagination, sticky/lock, edit and delete.
 # ============================================================
 
 MAX_THREAD_TITLE_LENGTH = 150
 MAX_POST_BODY_LENGTH = 5_000
 MAX_REPLY_DEPTH = 10
+FORUM_THREADS_PER_PAGE = 15
 
-# Moderators can ban/unban users, delete accounts and delete any message.
+# Moderators can pin/lock threads and delete/edit any post. Names come
+# from the BOBWORLD_MODS env var (comma separated).
 MODERATORS = {
     m.strip()
     for m in os.environ.get("BOBWORLD_MODS", "bob").split(",")
@@ -1578,39 +1591,68 @@ def ts_format(ms):
 
 @app.template_filter("ts_edit")
 def ts_edit_format(ms):
-    """Show 'edited YYYY-MM-DD HH:MM' for forum posts."""
+    """'edited' timestamp for forum posts."""
     if not ms:
         return ""
     t = time.localtime(int(ms) / 1000)
     return time.strftime("%Y-%m-%d %H:%M", t)
 
 
-def _forum_post_body():
-    """Validates shared reply/thread body + image fields.
-    Returns (body, image_filename_or_None, error_response_or_None)."""
-    body = (request.form.get("body") or "").strip()
+@app.template_filter("is_video")
+def is_video_filter(filename):
+    """True when a forum attachment filename is a video."""
+    return (filename or "").rsplit(".", 1)[-1].lower() in VIDEO_EXTENSIONS
 
+
+def _forum_attachment():
+    """Optional image OR video attachment shared by threads and replies.
+    Returns (filename_or_None, error_response_or_None)."""
+    media = request.files.get("image")
+    if not media or not media.filename:
+        return None, None
+    saved = save_upload(media, media_only=True)
+    if not saved:
+        return None, ("Unsupported attachment", 400)
+    return saved, None
+
+
+def _forum_post_fields():
+    """Validates shared thread/reply body + attachment fields.
+    Returns (body, attachment, error_response_or_None)."""
+    body = (request.form.get("body") or "").strip()
     if len(body) > MAX_POST_BODY_LENGTH:
         return None, None, ("Post is too long", 400)
-
-    image_file = request.files.get("image")
-
-    if image_file and image_file.filename:
-        image = save_upload(image_file, image_only=True)
-        if not image:
-            return None, None, ("Invalid image", 400)
-    else:
-        image = None
-
-    return body, image, None
+    attachment, error = _forum_attachment()
+    if error:
+        return None, None, error
+    return body, attachment, None
 
 
-FORUM_THREADS_PER_PAGE = 15
+def _forum_owns(row, current, uid):
+    """Author check that survives username reuse: prefer the immutable
+    id stored on the row, fall back to the name for legacy rows."""
+    return (
+        row["author_id"] == uid
+        if row.get("author_id")
+        else row["author"] == current
+    )
+
+
+def _delete_forum_files(filenames):
+    for filename in filenames:
+        if not filename:
+            continue
+        path = os.path.join(UPLOAD_FOLDER, filename)
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
 
 @app.route("/forum")
 def forum():
-
+    """Board index: category pills, search, sorting, pagination."""
     current = session["user"]
 
     category = request.args.get("category", "").strip() or None
@@ -1627,17 +1669,20 @@ def forum():
     except (TypeError, ValueError):
         page = 1
     page = max(1, page)
-    offset = (page - 1) * FORUM_THREADS_PER_PAGE
 
     total = db.count_forum_threads(category=category, query_text=query_text)
-    total_pages = max(1, (total + FORUM_THREADS_PER_PAGE - 1) // FORUM_THREADS_PER_PAGE)
+    total_pages = max(
+        1, (total + FORUM_THREADS_PER_PAGE - 1) // FORUM_THREADS_PER_PAGE
+    )
+    # A page past the end shows the last page instead of an empty board.
+    page = min(page, total_pages)
+    offset = (page - 1) * FORUM_THREADS_PER_PAGE
 
     threads = db.list_forum_threads(
         viewer=current, category=category, query_text=query_text,
         sort=sort, limit=FORUM_THREADS_PER_PAGE, offset=offset,
     )
     users = db.all_users()
-    cat_counts = db.get_forum_thread_counts_by_category()
     user_data = users.get(current) or {}
 
     return render_template(
@@ -1650,7 +1695,7 @@ def forum():
         avatar=user_data.get("avatar"),
         bio=user_data.get("bio", ""),
         categories=FORUM_CATEGORIES,
-        cat_counts=cat_counts,
+        cat_counts=db.get_forum_thread_counts_by_category(),
         active_category=category,
         active_sort=sort,
         active_query=query_text,
@@ -1662,49 +1707,40 @@ def forum():
 
 @app.route("/forum/new", methods=["GET", "POST"])
 def forum_new():
-
     current = session["user"]
 
-    if request.method == "POST":
+    if request.method != "POST":
+        return redirect("/forum")
 
-        title = (request.form.get("title") or "").strip()
+    title = (request.form.get("title") or "").strip()
+    if not title:
+        return redirect("/forum")
+    if len(title) > MAX_THREAD_TITLE_LENGTH:
+        return "Title too long", 400
 
-        if not title:
-            return redirect("/forum")
+    body, attachment, error = _forum_post_fields()
+    if error:
+        return error
+    if not body and not attachment:
+        return redirect("/forum")
 
-        if len(title) > MAX_THREAD_TITLE_LENGTH:
-            return "Title too long", 400
+    category = (request.form.get("category") or "general").strip()
+    if category not in FORUM_CATEGORIES:
+        category = "general"
 
-        body, image, error = _forum_post_body()
-
-        if error:
-            return error
-
-        if not body and not image:
-            return redirect("/forum")
-
-        category = (request.form.get("category") or "general").strip()
-        if category not in FORUM_CATEGORIES:
-            category = "general"
-
-        thread_id = uuid.uuid4().hex
-
-        db.create_forum_thread(
-            thread_id, current, current_uid(), title, body, image, category
-        )
-
-        return redirect(f"/forum/{thread_id}")
-
-    return redirect("/forum")
+    thread_id = uuid.uuid4().hex
+    db.create_forum_thread(
+        thread_id, current, current_uid(), title, body, attachment, category
+    )
+    return redirect(f"/forum/{thread_id}")
 
 
 @app.route("/forum/<thread_id>")
 def forum_thread(thread_id):
-
     current = session["user"]
 
-    thread = db.get_forum_thread(thread_id, viewer=current, increment_view=True)
-
+    thread = db.get_forum_thread(thread_id, viewer=current,
+                                 increment_view=True)
     if not thread:
         abort(404)
 
@@ -1723,72 +1759,60 @@ def forum_thread(thread_id):
         display_name=user_data.get("display_name", current),
         avatar=user_data.get("avatar"),
         bio=user_data.get("bio", ""),
-        categories=FORUM_CATEGORIES,
     )
 
 
 @app.route("/forum/<thread_id>/reply", methods=["POST"])
 def forum_reply(thread_id):
-
     current = session["user"]
 
     thread = db.get_forum_thread(thread_id)
-
     if not thread:
         abort(404)
-
-    if thread.get("locked"):
+    if thread.get("locked") and not is_moderator(current):
         return "This thread is locked", 403
 
-    body, image, error = _forum_post_body()
-
+    body, attachment, error = _forum_post_fields()
     if error:
         return error
-
-    if not body and not image:
+    if not body and not attachment:
         return "Reply cannot be empty", 400
 
     parent_id = (request.form.get("parent_id") or "").strip() or None
-
     if parent_id:
         parent = db.get_forum_reply(parent_id)
-
         if not parent or parent["thread_id"] != thread_id:
             return "Invalid parent reply", 400
-
         if db.get_reply_depth(parent_id) >= MAX_REPLY_DEPTH:
             return "Reply nesting is too deep here", 400
 
     db.add_forum_reply(
-        thread_id,
-        parent_id,
-        uuid.uuid4().hex,
-        current,
-        current_uid(),
-        body,
-        image,
+        thread_id, parent_id, uuid.uuid4().hex, current, current_uid(),
+        body, attachment,
     )
 
-    # Notify thread author (if not self)
+    # Notify the thread author (unless they wrote it themselves).
     if thread["author"] != current:
-        preview = (body or "📎 attachment")[:80]
         push_notification(
             thread["author"],
             "forum",
             current,
-            f"replied in \"{thread['title']}\": {preview}",
+            f"replied in \"{thread['title']}\": {(body or '📎 attachment')[:80]}",
             f"/forum/{thread_id}",
         )
 
-    # Notify parent reply author (if different from thread author and self)
+    # Notify the author of the post being replied to (when that is a
+    # different person than the thread author and the replier).
     if parent_id:
         parent_author, _, _, _ = db.get_reply_author(parent_id)
-        if parent_author and parent_author != current and parent_author != thread["author"]:
+        if (parent_author and parent_author != current
+                and parent_author != thread["author"]):
             push_notification(
                 parent_author,
                 "forum",
                 current,
-                f"replied to your post in \"{thread['title']}\": {(body or '📎 attachment')[:60]}",
+                f"replied to your post in \"{thread['title']}\": "
+                f"{(body or '📎 attachment')[:60]}",
                 f"/forum/{thread_id}#reply-{parent_id}",
             )
 
@@ -1797,18 +1821,15 @@ def forum_reply(thread_id):
 
 @app.route("/forum/vote", methods=["POST"])
 def forum_vote():
-
     current = session["user"]
 
     data = request.get_json(silent=True) or {}
-
     target_type = data.get("target_type")
     target_id = data.get("target_id")
     value = data.get("value")
 
     if target_type not in ("thread", "reply"):
         return jsonify({"error": "Invalid target_type"}), 400
-
     if value not in (-1, 0, 1):
         return jsonify({"error": "Invalid value"}), 400
 
@@ -1817,55 +1838,35 @@ def forum_vote():
         if target_type == "thread"
         else db.get_forum_reply(target_id)
     )
-
     if not exists:
         return jsonify({"error": "Not found"}), 404
 
-    if target_type == "reply" and exists.get("thread_id"):
-        parent = db.get_forum_thread(exists["thread_id"])
-        if parent and parent.get("locked") and not is_moderator(current):
+    # Voting in a locked thread is moderator-only.
+    if not is_moderator(current):
+        if exists.get("locked") or (
+            target_type == "reply"
+            and (db.get_forum_thread(exists["thread_id"]) or {}).get("locked")
+        ):
             return jsonify({"error": "This thread is locked"}), 403
-    elif target_type == "thread" and exists.get("locked") \
-            and not is_moderator(current):
-        return jsonify({"error": "This thread is locked"}), 403
 
-    summary = db.set_vote(target_type, target_id, current, value)
-
-    return jsonify(summary)
+    return jsonify(db.set_vote(target_type, target_id, current, value))
 
 
 @app.route("/forum/<thread_id>/delete", methods=["POST"])
 def forum_delete_thread(thread_id):
-
     current = session["user"]
 
     thread = db.get_forum_thread(thread_id)
-
     if not thread:
         return jsonify({"error": "Thread not found"}), 404
 
-    uid = current_uid()
-    owns = (
-        thread["author_id"] == uid
-        if thread.get("author_id")
-        else thread["author"] == current
-    )
-
-    if not owns and not is_moderator(current):
+    if not _forum_owns(thread, current, current_uid()) \
+            and not is_moderator(current):
         return jsonify({
             "error": "Only the author or a moderator can delete this thread"
         }), 403
 
-    if thread.get("locked") and not is_moderator(current):
-        return jsonify({"error": "This thread is locked"}), 403
-
-    for filename in db.delete_forum_thread(thread_id):
-        path = os.path.join(UPLOAD_FOLDER, filename)
-        if os.path.exists(path):
-            try:
-                os.remove(path)
-            except OSError:
-                pass
+    _delete_forum_files(db.delete_forum_thread(thread_id))
 
     return redirect(safe_redirect_target(
         request.form.get("next"), "/forum"
@@ -1874,143 +1875,99 @@ def forum_delete_thread(thread_id):
 
 @app.route("/forum/reply/<reply_id>/delete", methods=["POST"])
 def forum_delete_reply(reply_id):
-
     current = session["user"]
 
     reply = db.get_forum_reply(reply_id)
     if not reply:
         return jsonify({"error": "Reply not found"}), 404
 
-    parent_thread = db.get_forum_thread(reply["thread_id"])
     is_mod = is_moderator(current)
+    parent_thread = db.get_forum_thread(reply["thread_id"])
     if not is_mod and parent_thread and parent_thread.get("locked"):
         return jsonify({"error": "This thread is locked"}), 403
 
-    uid = current_uid()
-    owns = (
-        reply["author_id"] == uid
-        if reply.get("author_id")
-        else reply["author"] == current
-    )
-
-    if not owns and not is_mod:
+    if not _forum_owns(reply, current, current_uid()) and not is_mod:
         return jsonify({
             "error": "Only the author or a moderator can delete this reply"
         }), 403
 
     deleted = db.delete_forum_reply(reply_id)
-
-    for filename in [reply.get("image")] + (
-        deleted.get("_deleted_images", []) if deleted else []
-    ):
-        if not filename:
-            continue
-        path = os.path.join(UPLOAD_FOLDER, filename)
-        if os.path.exists(path):
-            try:
-                os.remove(path)
-            except OSError:
-                pass
+    _delete_forum_files(
+        [reply.get("image")] + (deleted.get("_deleted_images", []) if
+                                deleted else [])
+    )
 
     return redirect(f"/forum/{reply['thread_id']}")
 
 
 @app.route("/forum/edit/thread/<thread_id>", methods=["POST"])
 def forum_edit_thread(thread_id):
-
     current = session["user"]
 
     thread = db.get_forum_thread(thread_id)
-
     if not thread:
         return jsonify({"error": "Thread not found"}), 404
 
-    uid = current_uid()
-    owns = (
-        thread["author_id"] == uid
-        if thread.get("author_id")
-        else thread["author"] == current
-    )
-
-    if not owns and not is_moderator(current):
+    if not _forum_owns(thread, current, current_uid()) \
+            and not is_moderator(current):
         return jsonify({"error": "Cannot edit this thread"}), 403
-
     if thread.get("locked") and not is_moderator(current):
         return jsonify({"error": "This thread is locked"}), 403
 
     body = (request.form.get("body") or "").strip()
     title = (request.form.get("title") or "").strip()
-
     if not body:
         return jsonify({"error": "Body cannot be empty"}), 400
-
     if not title:
         title = thread["title"]
-
     if len(title) > MAX_THREAD_TITLE_LENGTH:
         return jsonify({"error": "Title too long"}), 400
 
     db.edit_forum_thread(thread_id, body, title=title)
-
     return redirect(f"/forum/{thread_id}")
 
 
 @app.route("/forum/edit/reply/<reply_id>", methods=["POST"])
 def forum_edit_reply(reply_id):
-
     current = session["user"]
 
     reply = db.get_forum_reply(reply_id)
-
     if not reply:
         return jsonify({"error": "Reply not found"}), 404
 
-    parent_thread = db.get_forum_thread(reply["thread_id"])
     is_mod = is_moderator(current)
+    parent_thread = db.get_forum_thread(reply["thread_id"])
     if not is_mod and parent_thread and parent_thread.get("locked"):
         return jsonify({"error": "This thread is locked"}), 403
 
-    uid = current_uid()
-    owns = (
-        reply["author_id"] == uid
-        if reply.get("author_id")
-        else reply["author"] == current
-    )
-
-    if not owns and not is_mod:
+    if not _forum_owns(reply, current, current_uid()) and not is_mod:
         return jsonify({"error": "Cannot edit this reply"}), 403
 
     body = (request.form.get("body") or "").strip()
-
     if not body:
         return jsonify({"error": "Body cannot be empty"}), 400
 
     db.edit_forum_reply(reply_id, body)
-
     return redirect(f"/forum/{reply['thread_id']}")
 
 
 @app.route("/forum/<thread_id>/flag", methods=["POST"])
 def forum_thread_flag(thread_id):
-
     current = session["user"]
 
     if not is_moderator(current):
         return jsonify({"error": "Moderator access required"}), 403
 
     thread = db.get_forum_thread(thread_id)
-
     if not thread:
         return jsonify({"error": "Thread not found"}), 404
 
     flag = (request.form.get("flag") or "").strip()
     value = request.form.get("value", "").strip() in ("1", "true", "on")
-
     if flag not in ("sticky", "locked"):
         return jsonify({"error": "Invalid flag"}), 400
 
     db.set_thread_flag(thread_id, flag, value)
-
     return redirect(f"/forum/{thread_id}")
 
 
