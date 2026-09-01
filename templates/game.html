@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+        />
+        <title>{{ game.name }} • bobworld Games</title>
+        <link
+            rel="icon"
+            href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000080'/%3E%3Ctext x='16' y='23' font-family='Tahoma,Arial' font-size='18' font-weight='bold' fill='%23fff' text-anchor='middle'%3EB%3C/text%3E%3C/svg%3E"
+        />
+        <link rel="stylesheet" href="/static/css/chat.css?v=13" />
+    </head>
+    <body data-user="{{ user }}" data-display="{{ display_name }}">
+        <div class="app">
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <div class="user-info-sidebar">
+                        {% if avatar %}
+                        <img
+                            src="/avatars/{{ avatar }}"
+                            class="sidebar-avatar"
+                        />
+                        {% else %}
+                        <div class="sidebar-avatar-default">
+                            {{ user[0]|upper }}
+                        </div>
+                        {% endif %}
+                        <div class="user-text">
+                            <h3>{{ display_name }}</h3>
+                            <p class="username">@{{ user }}</p>
+                        </div>
+                    </div>
+                    <a href="/profile" class="edit-profile">Edit Profile</a>
+                </div>
+                <nav class="sidebar-nav">
+                    <a href="/chat" class="nav-item">Global Chat</a>
+                    <a href="/friends" class="nav-item">Friends</a>
+                    <a href="/users" class="nav-item">Users</a>
+                    <a href="/groups" class="nav-item">Groups</a>
+                    <a href="/games" class="nav-item active">Games</a>
+                    <button id="themeToggle" class="nav-item">
+                        Dark/Light
+                    </button>
+                    <a href="/logout" class="nav-item logout">Logout</a>
+                </nav>
+                <div class="sidebar-footer">
+                    <p class="bio">
+                        {{ bio[:80] }}{% if bio|length > 80 %}...{% endif %}
+                    </p>
+                </div>
+            </aside>
+
+            <main class="chat-main">
+                <header class="chat-header">
+                    <button class="hamburger" id="hamburgerBtn">&#8801;</button>
+                    <h2>{{ game.name }}</h2>
+                    <div class="group-admin-controls">
+                        <a href="/games" class="admin-btn">Back</a>
+                    </div>
+                </header>
+
+                {% set section = "games" %}
+                {% include "_topbar.html" %}
+
+                {% if is_desktop %}
+                <div class="game-frame-wrap">
+                    <iframe
+                        class="game-frame"
+                        src="/static/games/{{ game.id|urlencode }}/index.html"
+                        allow="autoplay; fullscreen; gamepad"
+                        title="{{ game.name }}"
+                    ></iframe>
+                </div>
+                {% else %}
+                <div class="games-container">
+                    <div class="msg-error desktop-note">
+                        This game is desktop-only. Open bobworld on a computer
+                        with a keyboard and mouse to play it.
+                    </div>
+                    <p>
+                        <a href="/games" class="back-btn btn-inline"
+                            >Back to Games</a
+                        >
+                    </p>
+                </div>
+                {% endif %}
+            </main>
+        </div>
+        <div class="mobile-overlay" id="mobileOverlay"></div>
+
+        <script>
+            window.CURRENT_USER_DATA = {
+                username: "{{ user }}",
+                display_name: "{{ display_name }}",
+                avatar: "{{ avatar }}"
+            };
+        </script>
+        <script src="/static/js/socket.io.min.js?v=1"></script>
+        <script src="/static/js/chat.js?v=15"></script>
+    </body>
+</html>

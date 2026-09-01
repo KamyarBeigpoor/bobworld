@@ -1,236 +1,235 @@
 <!doctype html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta
-            name="viewport"
-            content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
-        />
-        <title>bobworld • Forum</title>
-        <link
+ <head>
+ <meta charset="UTF-8" />
+ <meta
+ name="viewport"
+ content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+ />
+ <title>bobworld • Forum</title>
+ <link
             rel="icon"
-            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
+            href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000080'/%3E%3Ctext x='16' y='23' font-family='Tahoma,Arial' font-size='18' font-weight='bold' fill='%23fff' text-anchor='middle'%3EB%3C/text%3E%3C/svg%3E"
         />
-        <link rel="stylesheet" href="/static/css/chat.css?v=12" />
-    </head>
-    <body data-user="{{ user }}" data-display="{{ display_name }}">
-        <div class="app">
-            <aside class="sidebar" id="sidebar">
-                <div class="sidebar-header">
-                    <div class="user-info-sidebar">
-                        {% if avatar %}
-                        <img
-                            src="/avatars/{{ avatar }}"
-                            class="sidebar-avatar"
-                        />
-                        {% else %}
-                        <div class="sidebar-avatar-default">
-                            {{ user[0]|upper }}
-                        </div>
-                        {% endif %}
-                        <div class="user-text">
-                            <h3>{{ display_name }}</h3>
-                            <p class="username">@{{ user }}</p>
-                        </div>
-                    </div>
-                    <a href="/profile" class="edit-profile">✏️ Edit Profile</a>
-                </div>
-                <nav class="sidebar-nav">
-                    <a href="/chat" class="nav-item">🌍 Global Chat</a>
-                    <a href="/friends" class="nav-item">🫂 Friends</a>
-                    <a href="/users" class="nav-item">👥 Users</a>
-                    <a href="/groups" class="nav-item">🏡 Groups</a>
-                    <button id="themeToggle" class="nav-item">
-                        🌓 Dark/Light
-                    </button>
-                    <a href="/logout" class="nav-item logout">🚪 Logout</a>
-                </nav>
-                <div class="sidebar-footer">
-                    <p class="bio">
-                        {{ bio[:80] }}{% if bio|length > 80 %}...{% endif %}
-                    </p>
-                </div>
-            </aside>
+ <link rel="stylesheet" href="/static/css/chat.css?v=12" />
+ </head>
+ <body data-user="{{ user }}" data-display="{{ display_name }}">
+ <div class="app">
+ <aside class="sidebar" id="sidebar">
+ <div class="sidebar-header">
+ <div class="user-info-sidebar">
+ {% if avatar %}
+ <img
+ src="/avatars/{{ avatar }}"
+ class="sidebar-avatar"
+ />
+ {% else %}
+ <div class="sidebar-avatar-default">
+ {{ user[0]|upper }}
+ </div>
+ {% endif %}
+ <div class="user-text">
+ <h3>{{ display_name }}</h3>
+ <p class="username">@{{ user }}</p>
+ </div>
+ </div>
+ <a href="/profile" class="edit-profile">Edit Profile</a>
+ </div>
+ <nav class="sidebar-nav">
+ <a href="/chat" class="nav-item">Global Chat</a>
+ <a href="/friends" class="nav-item">Friends</a>
+ <a href="/users" class="nav-item">Users</a>
+ <a href="/groups" class="nav-item">Groups</a>
+ <a href="/games" class="nav-item">Games</a>
+ <button id="themeToggle" class="nav-item">
+ Dark/Light
+ </button>
+ <a href="/logout" class="nav-item logout">Logout</a>
+ </nav>
+ <div class="sidebar-footer">
+ <p class="bio">
+ {{ bio[:80] }}{% if bio|length > 80 %}...{% endif %}
+ </p>
+ </div>
+ </aside>
 
-            <main class="chat-main">
-                <header class="chat-header">
-                    <button class="hamburger" id="hamburgerBtn">☰</button>
-                    <h2>📋 Forum</h2>
-                    <div class="placeholder"></div>
-                </header>
+ <main class="chat-main">
+ <header class="chat-header">
+ <button class="hamburger" id="hamburgerBtn">&#8801;</button>
+ <h2>Forum</h2>
+ <div class="placeholder"></div>
+ </header>
 
-                {% set section = "forum" %}
-                {% include "_topbar.html" %}
+ {% set section = "forum" %}
+ {% include "_topbar.html" %}
 
-                <div class="forum-container">
-                    <details class="create-panel">
-                        <summary class="create-toggle"
-                            >➕ New Thread</summary
-                        >
-                        <form
-                            class="create-body forum-form"
-                            method="POST"
-                            action="/forum/new"
-                            enctype="multipart/form-data"
-                        >
-                            <div class="form-group">
-                                <label for="t-title">Title</label>
-                                <input
-                                    type="text"
-                                    id="t-title"
-                                    name="title"
-                                    required
-                                    maxlength="150"
-                                    placeholder="What do you want to talk about?"
-                                />
-                            </div>
-                            <div class="form-group">
-                                <label for="t-category">Category</label>
-                                <select id="t-category" name="category">
-                                    {% for cat in categories %}
-                                    <option value="{{ cat }}"{% if cat == 'general' %} selected{% endif %}>{{ cat|capitalize }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="t-body">Text (optional)</label>
-                                <textarea
-                                    id="t-body"
-                                    name="body"
-                                    maxlength="5000"
-                                    placeholder="Write your post..."></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label class="avatar-upload-btn">
-                                    📎 Attach image or video
-                                    <input
-                                        type="file"
-                                        name="image"
-                                        accept="image/png,image/jpeg,image/gif,image/webp,image/bmp,video/mp4,video/webm,video/quicktime"
-                                        style="display: none"
-                                    />
-                                </label>
-                                <div class="file-hint">
-                                    PNG, JPG, GIF, WebP, MP4 or WebM
-                                </div>
-                            </div>
-                            <button type="submit" class="save-btn btn-inline">
-                                📋 Post Thread
-                            </button>
-                        </form>
-                    </details>
+ <div class="forum-container">
+ <details class="create-panel">
+ <summary class="create-toggle"
+ >New Thread</summary
+ >
+ <form
+ class="create-body forum-form"
+ method="POST"
+ action="/forum/new"
+ enctype="multipart/form-data"
+ >
+ <div class="form-group">
+ <label for="t-title">Title</label>
+ <input
+ type="text"
+ id="t-title"
+ name="title"
+ required
+ maxlength="150"
+ placeholder="What do you want to talk about?"
+ />
+ </div>
+ <div class="form-group">
+ <label for="t-category">Category</label>
+ <select id="t-category" name="category">
+ {% for cat in categories %}
+ <option value="{{ cat }}"{% if cat == 'general' %} selected{% endif %}>{{ cat|capitalize }}</option>
+ {% endfor %}
+ </select>
+ </div>
+ <div class="form-group">
+ <label for="t-body">Text (optional)</label>
+ <textarea
+ id="t-body"
+ name="body"
+ maxlength="5000"
+ placeholder="Write your post..."></textarea>
+ </div>
+ <div class="form-group">
+ <label class="avatar-upload-btn">
+ Attach image or video
+ <input
+ type="file"
+ name="image"
+ accept="image/png,image/jpeg,image/gif,image/webp,image/bmp,video/mp4,video/webm,video/quicktime"
+ style="display: none"
+ />
+ </label>
+ <div class="file-hint">
+ PNG, JPG, GIF, WebP, MP4 or WebM
+ </div>
+ </div>
+ <button type="submit" class="save-btn btn-inline">
+ Post Thread
+ </button>
+ </form>
+ </details>
 
-                    {# ---- Filter bar ---- #}
-                    <div class="forum-filter-bar">
-                        <div class="forum-categories">
-                            {% set q_suffix = '&q=' ~ (active_query|urlencode) if active_query else '' %}
-                            <a href="/forum?sort={{ active_sort }}{{ q_suffix }}" class="cat-pill{% if not active_category %} active{% endif %}">All</a>
-                            {% for cat in categories %}
-                            <a href="/forum?category={{ cat|urlencode }}&sort={{ active_sort }}{{ q_suffix }}" class="cat-pill{% if active_category == cat %} active{% endif %}">{{ cat|capitalize }}{% if cat_counts.get(cat, 0) %} <span class="cat-count">{{ cat_counts[cat] }}</span>{% endif %}</a>
-                            {% endfor %}
-                        </div>
-                        <div class="forum-search-sort">
-                            <form method="GET" action="/forum" class="forum-search-form">
-                                {% if active_category %}<input type="hidden" name="category" value="{{ active_category }}">{% endif %}
-                                <input type="hidden" name="sort" value="{{ active_sort }}">
-                                <input type="text" name="q" value="{{ active_query or '' }}" placeholder="Search threads…" maxlength="100" class="forum-search-input">
-                                <button type="submit" class="save-btn btn-inline">🔍</button>
-                                {% if active_query %}<a href="/forum?sort={{ active_sort }}{% if active_category %}&category={{ active_category }}{% endif %}" class="btn-inline">✕</a>{% endif %}
-                            </form>
-                            <form method="GET" action="/forum" class="forum-sort-form">
-                                {% if active_category %}<input type="hidden" name="category" value="{{ active_category }}">{% endif %}
-                                {% if active_query %}<input type="hidden" name="q" value="{{ active_query }}">{% endif %}
-                                <select name="sort" onchange="this.form.submit()">
-                                    <option value="active"{% if active_sort == 'active' %} selected{% endif %}>🔥 Active</option>
-                                    <option value="new"{% if active_sort == 'new' %} selected{% endif %}>🕐 Newest</option>
-                                    <option value="top"{% if active_sort == 'top' %} selected{% endif %}>🏆 Top</option>
-                                </select>
-                            </form>
-                        </div>
-                    </div>
+ {# ---- Filter bar ---- #}
+ <div class="forum-filter-bar">
+ <div class="forum-categories">
+ {% set q_suffix = '&q=' ~ (active_query|urlencode) if active_query else '' %}
+ <a href="/forum?sort={{ active_sort }}{{ q_suffix }}" class="cat-pill{% if not active_category %} active{% endif %}">All</a>
+ {% for cat in categories %}
+ <a href="/forum?category={{ cat|urlencode }}&sort={{ active_sort }}{{ q_suffix }}" class="cat-pill{% if active_category == cat %} active{% endif %}">{{ cat|capitalize }}{% if cat_counts.get(cat, 0) %} <span class="cat-count">{{ cat_counts[cat] }}</span>{% endif %}</a>
+ {% endfor %}
+ </div>
+ <div class="forum-search-sort">
+ <form method="GET" action="/forum" class="forum-search-form">
+ {% if active_category %}<input type="hidden" name="category" value="{{ active_category }}">{% endif %}
+ <input type="hidden" name="sort" value="{{ active_sort }}">
+ <input type="text" name="q" value="{{ active_query or '' }}" placeholder="Search threads…" maxlength="100" class="forum-search-input">
+ <button type="submit" class="save-btn btn-inline">Search</button>
+ {% if active_query %}<a href="/forum?sort={{ active_sort }}{% if active_category %}&category={{ active_category }}{% endif %}" class="btn-inline">Clear</a>{% endif %}
+ </form>
+ <form method="GET" action="/forum" class="forum-sort-form">
+ {% if active_category %}<input type="hidden" name="category" value="{{ active_category }}">{% endif %}
+ {% if active_query %}<input type="hidden" name="q" value="{{ active_query }}">{% endif %}
+ <select name="sort" onchange="this.form.submit()">
+ <option value="active"{% if active_sort == 'active' %} selected{% endif %}>Active</option>
+ <option value="new"{% if active_sort == 'new' %} selected{% endif %}>Newest</option>
+ <option value="top"{% if active_sort == 'top' %} selected{% endif %}>Top</option>
+ </select>
+ </form>
+ </div>
+ </div>
 
-                    {# ---------- Board-style column headers ---------- #}
-                    <div class="board-head">
-                        <span class="col-score">Score</span>
-                        <span class="col-topic">Topic</span>
-                        <span class="col-replies">Replies</span>
-                        <span class="col-votes">Likes</span>
-                        <span class="col-activity">Activity</span>
-                    </div>
+ {# ---------- Board-style column headers ---------- #}
+ <div class="board-head">
+ <span class="col-score">Score</span>
+ <span class="col-topic">Topic</span>
+ <span class="col-replies">Replies</span>
+ <span class="col-votes">Likes</span>
+ <span class="col-activity">Activity</span>
+ </div>
 
-                    <div class="threads-list board-list">
-                        {% for t in threads %}
-                        <div class="thread-row{% if t.sticky %} sticky{% endif %}">
-                            <div class="row-score{% if t.my_vote == 1 %} upvoted{% elif t.my_vote == -1 %} downvoted{% endif %}">
-                                {{ '+' if t.score > 0 else '' }}{{ t.score }}
-                            </div>
-                            <div class="row-topic">
-                                {% if t.sticky %}<span class="sticky-badge" title="Pinned">📌</span>{% endif %}
-                                {% if t.locked %}<span class="locked-badge" title="Locked">🔒</span>{% endif %}
-                                <a href="/forum/{{ t.id }}" class="thread-link">{{ t.title }}</a>
-                                <span class="category-tag">{{ t.category }}</span>
-                                {% if t.image %}
-                                <span class="paperclip" title="{{ 'has video' if t.image|is_video else 'has image' }}">
-                                    {{ '🎬' if t.image|is_video else '🖼️' }}
-                                </span>
-                                {% endif %}
-                                {% if t.body %}
-                                <div class="thread-excerpt">
-                                    {{ t.body[:120] }}{% if t.body|length > 120 %}...{% endif %}
-                                </div>
-                                {% endif %}
-                                <div class="thread-meta">
-                                    by
-                                    <a href="/user/{{ t.author }}" class="profile-link" data-username="{{ t.author }}">
-                                        {{ users.get(t.author, {}).get('display_name', t.author) }}
-                                    </a>
-                                    &bull; {{ t.timestamp|ts }}
-                                    {% if t.view_count %}&bull; 👁 {{ t.view_count }}{% endif %}
-                                </div>
-                            </div>
-                            <div class="row-replies">
-                                {{ t.reply_count }}<br />
-                                <span class="stat-label">repl{{ 'y' if t.reply_count == 1 else 'ies' }}</span>
-                            </div>
-                            <div class="row-votes">
-                                👍 {{ t.likes }}<br />👎 {{ t.dislikes }}
-                            </div>
-                            <div class="row-activity">
-                                {{ t.last_activity|ts }}
-                            </div>
-                        </div>
-                        {% else %}
-                        <p class="no-groups board-empty">
-                            {% if active_query %}No results for "{{ active_query }}".{% else %}No threads yet. Start the first one!{% endif %}
-                        </p>
-                        {% endfor %}
-                    </div>
+ <div class="threads-list board-list">
+ {% for t in threads %}
+ <div class="thread-row{% if t.sticky %} sticky{% endif %}">
+ <div class="row-score{% if t.my_vote == 1 %} upvoted{% elif t.my_vote == -1 %} downvoted{% endif %}">
+ {{ '+' if t.score > 0 else '' }}{{ t.score }}
+ </div>
+ <div class="row-topic">
+ {% if t.sticky %}<span class="sticky-badge" title="Pinned">PINNED</span>{% endif %}
+ {% if t.locked %}<span class="locked-badge" title="Locked">LOCKED</span>{% endif %}
+ <a href="/forum/{{ t.id }}" class="thread-link">{{ t.title }}</a>
+ <span class="category-tag">{{ t.category }}</span>
+ {% if t.image %}
+ <span class="media-tag" title="{{ 'Has video' if t.image|is_video else 'Has image' }}">{{ 'VID' if t.image|is_video else 'IMG' }}</span>
+ {% endif %}
+ {% if t.body %}
+ <div class="thread-excerpt">
+ {{ t.body[:120] }}{% if t.body|length > 120 %}...{% endif %}
+ </div>
+ {% endif %}
+ <div class="thread-meta">
+ by
+ <a href="/user/{{ t.author }}" class="profile-link" data-username="{{ t.author }}">
+ {{ users.get(t.author, {}).get('display_name', t.author) }}
+ </a>
+ &bull; {{ t.timestamp|ts }}
+ {% if t.view_count %}&bull; {{ t.view_count }} views{% endif %}
+ </div>
+ </div>
+ <div class="row-replies">
+ {{ t.reply_count }}<br />
+ <span class="stat-label">repl{{ 'y' if t.reply_count == 1 else 'ies' }}</span>
+ </div>
+ <div class="row-votes">
+ {{ t.likes }} likes<br />{{ t.dislikes }} dislikes
+ </div>
+ <div class="row-activity">
+ {{ t.last_activity|ts }}
+ </div>
+ </div>
+ {% else %}
+ <p class="no-groups board-empty">
+ {% if active_query %}No results for "{{ active_query }}".{% else %}No threads yet. Start the first one!{% endif %}
+ </p>
+ {% endfor %}
+ </div>
 
-                    {# ---- Pagination ---- #}
-                    {% if total_pages > 1 %}
-                    <div class="forum-pagination">
-                        {% if page > 1 %}
-                        <a href="/forum?page={{ page - 1 }}&sort={{ active_sort }}{% if active_category %}&category={{ active_category }}{% endif %}{% if active_query %}&q={{ active_query|urlencode }}{% endif %}" class="save-btn btn-inline">⬅ Prev</a>
-                        {% endif %}
-                        <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
-                        {% if page < total_pages %}
-                        <a href="/forum?page={{ page + 1 }}&sort={{ active_sort }}{% if active_category %}&category={{ active_category }}{% endif %}{% if active_query %}&q={{ active_query|urlencode }}{% endif %}" class="save-btn btn-inline">Next ➡</a>
-                        {% endif %}
-                    </div>
-                    {% endif %}
-                </div>
-            </main>
-        </div>
-        <div class="mobile-overlay" id="mobileOverlay"></div>
+ {# ---- Pagination ---- #}
+ {% if total_pages > 1 %}
+ <div class="forum-pagination">
+ {% if page > 1 %}
+ <a href="/forum?page={{ page - 1 }}&sort={{ active_sort }}{% if active_category %}&category={{ active_category }}{% endif %}{% if active_query %}&q={{ active_query|urlencode }}{% endif %}" class="save-btn btn-inline">Prev</a>
+ {% endif %}
+ <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+ {% if page < total_pages %}
+ <a href="/forum?page={{ page + 1 }}&sort={{ active_sort }}{% if active_category %}&category={{ active_category }}{% endif %}{% if active_query %}&q={{ active_query|urlencode }}{% endif %}" class="save-btn btn-inline">Next</a>
+ {% endif %}
+ </div>
+ {% endif %}
+ </div>
+ </main>
+ </div>
+ <div class="mobile-overlay" id="mobileOverlay"></div>
 
-        <script>
-            window.CURRENT_USER_DATA = {
-                username: "{{ user }}",
-                display_name: "{{ display_name }}",
-                avatar: "{{ avatar }}"
-            };
-        </script>
-        <script src="/static/js/socket.io.min.js?v=1"></script>
-        <script src="/static/js/chat.js?v=14"></script>
-    </body>
+ <script>
+ window.CURRENT_USER_DATA = {
+ username: "{{ user }}",
+ display_name: "{{ display_name }}",
+ avatar: "{{ avatar }}"
+ };
+ </script>
+ <script src="/static/js/socket.io.min.js?v=1"></script>
+ <script src="/static/js/chat.js?v=14"></script>
+ </body>
 </html>

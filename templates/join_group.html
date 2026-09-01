@@ -1,41 +1,41 @@
 <!doctype html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
-        <title>Join Group • bobworld</title>
-        <link
+ <head>
+ <meta charset="UTF-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
+ <title>Join Group • bobworld</title>
+ <link
             rel="icon"
-            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
+            href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000080'/%3E%3Ctext x='16' y='23' font-family='Tahoma,Arial' font-size='18' font-weight='bold' fill='%23fff' text-anchor='middle'%3EB%3C/text%3E%3C/svg%3E"
         />
-        <link rel="stylesheet" href="/static/css/chat.css?v=11" />
-    </head>
-    <body>
-        <div class="auth-container">
-            <div class="auth-card">
-                <h1>Join #{{ group.name }}</h1>
-                <p>This group is password-protected.</p>
-                {% if error %}
-                <div class="msg-error" role="alert">⚠️ {{ error }}</div>
-                {% endif %}
-                <form method="POST" action="/group/{{ group.id }}/join">
-                    <div class="form-group">
-                        <label>Password</label>
-                        <input type="password" name="password" required />
-                    </div>
-                    <button type="submit" class="save-btn">Join Group</button>
-                    <a
-                        href="/groups"
-                        class="back-btn"
-                        style="display: block; margin-top: 12px"
-                        >Back to Groups</a
-                    >
-                </form>
-            </div>
-        </div>
-        <script>
-            const savedTheme = localStorage.getItem("bobworld-theme") || "light";
-            document.documentElement.setAttribute("data-theme", savedTheme);
-        </script>
-    </body>
+ <link rel="stylesheet" href="/static/css/chat.css?v=11" />
+ </head>
+ <body>
+ <div class="auth-container">
+ <div class="auth-card">
+ <h1>Join #{{ group.name }}</h1>
+ <p>This group is password-protected.</p>
+ {% if error %}
+ <div class="msg-error" role="alert">{{ error }}</div>
+ {% endif %}
+ <form method="POST" action="/group/{{ group.id }}/join">
+ <div class="form-group">
+ <label>Password</label>
+ <input type="password" name="password" required />
+ </div>
+ <button type="submit" class="save-btn">Join Group</button>
+ <a
+ href="/groups"
+ class="back-btn"
+ style="display: block; margin-top: 12px"
+ >Back to Groups</a
+ >
+ </form>
+ </div>
+ </div>
+ <script>
+ const savedTheme = localStorage.getItem("bobworld-theme") || "light";
+ document.documentElement.setAttribute("data-theme", savedTheme);
+ </script>
+ </body>
 </html>

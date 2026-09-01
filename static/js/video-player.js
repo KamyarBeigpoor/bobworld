@@ -47,7 +47,7 @@ class RetroVideoPlayer {
     // Play/Pause button
     this.playBtn = document.createElement("button");
     this.playBtn.className = "retro-video-btn";
-    this.playBtn.innerHTML = "▶";
+    this.playBtn.innerHTML = "&#9654;";
     this.playBtn.title = "Play";
 
     // Progress bar container
@@ -68,13 +68,13 @@ class RetroVideoPlayer {
     // Mute button
     this.muteBtn = document.createElement("button");
     this.muteBtn.className = "retro-video-btn retro-video-btn-sm";
-    this.muteBtn.innerHTML = "🔊";
+    this.muteBtn.innerHTML = "&#128266;";
     this.muteBtn.title = "Mute";
 
     // Fullscreen button
     this.fullscreenBtn = document.createElement("button");
     this.fullscreenBtn.className = "retro-video-btn retro-video-btn-sm";
-    this.fullscreenBtn.innerHTML = "⛶";
+    this.fullscreenBtn.innerHTML = "&#9658;";
     this.fullscreenBtn.title = "Fullscreen";
 
     // Assemble controls
@@ -151,15 +151,15 @@ class RetroVideoPlayer {
 
     // Update play button icon on play/pause
     this.video.addEventListener("play", () => {
-      this.playBtn.innerHTML = "⏸";
+      this.playBtn.innerHTML = "&#9209;";
       this.playBtn.title = "Pause";
     });
     this.video.addEventListener("pause", () => {
-      this.playBtn.innerHTML = "▶";
+      this.playBtn.innerHTML = "&#9654;";
       this.playBtn.title = "Play";
     });
     this.video.addEventListener("ended", () => {
-      this.playBtn.innerHTML = "▶";
+      this.playBtn.innerHTML = "&#9654;";
       this.playBtn.title = "Play";
     });
 
@@ -182,10 +182,10 @@ class RetroVideoPlayer {
 
   updateMuteIcon() {
     if (this.video.muted || this.video.volume === 0) {
-      this.muteBtn.innerHTML = "🔇";
+      this.muteBtn.innerHTML = "Mute";
       this.muteBtn.title = "Unmute";
     } else {
-      this.muteBtn.innerHTML = "🔊";
+      this.muteBtn.innerHTML = "Unmute";
       this.muteBtn.title = "Mute";
     }
   }

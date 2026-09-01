@@ -1,219 +1,220 @@
 <!doctype html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta
-            name="viewport"
-            content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
-        />
-        <title>{{ profile.get('display_name', username) }} • bobworld</title>
-        <link
+ <head>
+ <meta charset="UTF-8" />
+ <meta
+ name="viewport"
+ content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+ />
+ <title>{{ profile.get('display_name', username) }} • bobworld</title>
+ <link
             rel="icon"
-            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
+            href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000080'/%3E%3Ctext x='16' y='23' font-family='Tahoma,Arial' font-size='18' font-weight='bold' fill='%23fff' text-anchor='middle'%3EB%3C/text%3E%3C/svg%3E"
         />
-        <link rel="stylesheet" href="/static/css/chat.css?v=11" />
-    </head>
-    <body
-        data-user="{{ user|default('') }}"
-        data-display="{{ display_name|default('') }}"
-        data-avatar="{{ avatar|default('') }}"
-    >
-        <div class="app">
-            <!-- Sidebar -->
-            <aside class="sidebar" id="sidebar">
-                <div class="sidebar-header">
-                    <div class="user-info-sidebar">
-                        {% if avatar %}
-                        <img
-                            src="/avatars/{{ avatar }}"
-                            class="sidebar-avatar"
-                        />
-                        {% else %}
-                        <div class="sidebar-avatar-default">
-                            {{ user|first|upper if user else '?' }}
-                        </div>
-                        {% endif %}
-                        <div class="user-text">
-                            <h3>{{ display_name|default('Guest') }}</h3>
-                            <p class="username">@{{ user|default('guest') }}</p>
-                        </div>
-                    </div>
-                    <a href="/profile" class="edit-profile">✏️ Edit Profile</a>
-                </div>
-                <nav class="sidebar-nav">
-                    <a href="/chat" class="nav-item">🌍 Global Chat</a>
-                    <a href="/friends" class="nav-item">
-                        🫂 Friends</a
-                    >
-                    <a href="/users" class="nav-item active">👥 Users</a>
-                    <a href="/groups" class="nav-item">🏡 Groups</a>
-                    <button id="themeToggle" class="nav-item">
-                        🌓 Dark/Light
-                    </button>
-                    <a href="/logout" class="nav-item logout">🚪 Logout</a>
-                </nav>
-                <div class="sidebar-footer">
-                    <p class="bio">
-                        {{ bio|default('')|truncate(80, True, '...') }}
-                    </p>
-                </div>
-            </aside>
+ <link rel="stylesheet" href="/static/css/chat.css?v=11" />
+ </head>
+ <body
+ data-user="{{ user|default('') }}"
+ data-display="{{ display_name|default('') }}"
+ data-avatar="{{ avatar|default('') }}"
+ >
+ <div class="app">
+ <!-- Sidebar -->
+ <aside class="sidebar" id="sidebar">
+ <div class="sidebar-header">
+ <div class="user-info-sidebar">
+ {% if avatar %}
+ <img
+ src="/avatars/{{ avatar }}"
+ class="sidebar-avatar"
+ />
+ {% else %}
+ <div class="sidebar-avatar-default">
+ {{ user|first|upper if user else '?' }}
+ </div>
+ {% endif %}
+ <div class="user-text">
+ <h3>{{ display_name|default('Guest') }}</h3>
+ <p class="username">@{{ user|default('guest') }}</p>
+ </div>
+ </div>
+ <a href="/profile" class="edit-profile">Edit Profile</a>
+ </div>
+ <nav class="sidebar-nav">
+ <a href="/chat" class="nav-item">Global Chat</a>
+ <a href="/friends" class="nav-item">
+ Friends</a
+ >
+ <a href="/users" class="nav-item active">Users</a>
+ <a href="/groups" class="nav-item">Groups</a>
+ <a href="/games" class="nav-item">Games</a>
+ <button id="themeToggle" class="nav-item">
+ Dark/Light
+ </button>
+ <a href="/logout" class="nav-item logout">Logout</a>
+ </nav>
+ <div class="sidebar-footer">
+ <p class="bio">
+ {{ bio|default('')|truncate(80, True, '...') }}
+ </p>
+ </div>
+ </aside>
 
-            <!-- Main content -->
-            <main class="profile-main">
-                <header class="chat-header">
-                    <button class="hamburger" id="hamburgerBtn">☰</button>
-                    <h2>
-                        {{ profile.get('display_name', username) }}'s Profile
-                    </h2>
-                    <div class="placeholder"></div>
-                </header>
+ <!-- Main content -->
+ <main class="profile-main">
+ <header class="chat-header">
+ <button class="hamburger" id="hamburgerBtn">&#8801;</button>
+ <h2>
+ {{ profile.get('display_name', username) }}'s Profile
+ </h2>
+ <div class="placeholder"></div>
+ </header>
 
-                {% set section = "chat" %}
-                {% include "_topbar.html" %}
+ {% set section = "chat" %}
+ {% include "_topbar.html" %}
 
-                <div class="profile-view-container">
-                    <div class="profile-card">
-                        <div class="avatar-section">
-                            {% if profile.get('avatar') %}
-                            <img
-                                src="/avatars/{{ profile['avatar'] }}"
-                                class="profile-avatar-img"
-                                alt="{{ profile.get('display_name') }}"
-                            />
-                            {% else %} {% set initial =
-                            profile.get('display_name', username)|first|upper %}
-                            <div class="profile-avatar-default">
-                                {{ initial }}
-                            </div>
-                            {% endif %}
-                        </div>
+ <div class="profile-view-container">
+ <div class="profile-card">
+ <div class="avatar-section">
+ {% if profile.get('avatar') %}
+ <img
+ src="/avatars/{{ profile['avatar'] }}"
+ class="profile-avatar-img"
+ alt="{{ profile.get('display_name') }}"
+ />
+ {% else %} {% set initial =
+ profile.get('display_name', username)|first|upper %}
+ <div class="profile-avatar-default">
+ {{ initial }}
+ </div>
+ {% endif %}
+ </div>
 
-                        <h2 class="profile-display-name">
-                            {{ profile.get('display_name', username) }}
-                            {% if target_is_mod %}<span class="mod-badge"
-                                >👮 MOD</span
-                            >{% endif %}
-                            {% if target_banned %}
-                            <span class="banned-badge">🚫 BANNED</span>
-                            {% endif %}
-                        </h2>
-                        <p class="username">@{{ username }}</p>
+ <h2 class="profile-display-name">
+ {{ profile.get('display_name', username) }}
+ {% if target_is_mod %}<span class="mod-badge"
+ >MOD</span
+ >{% endif %}
+ {% if target_banned %}
+ <span class="banned-badge">BANNED</span>
+ {% endif %}
+ </h2>
+ <p class="username">@{{ username }}</p>
 
-                        <div class="profile-bio">
-                            <p>{{ profile.get('bio') or "✨ No bio yet." }}</p>
-                        </div>
+ <div class="profile-bio">
+ <p>{{ profile.get('bio') or " No bio yet." }}</p>
+ </div>
 
-                        <div class="profile-actions">
-                            {% if user and username != user %}
-                            {% if friend_status == 'none' %}
-                            <form
-                                method="POST"
-                                action="/friends/request/{{ username }}"
-                            >
-                                <button type="submit" class="dm-btn">
-                                    ➕ Add Friend</button>
-                            </form>
-                            {% elif friend_status == 'pending_out' %}
-                            <span class="pill">⏳ Request sent</span>
-                            {% elif friend_status == 'pending_in' %}
-                            <form
-                                method="POST"
-                                action="/friends/request/{{ username }}"
-                            >
-                                <button type="submit" class="dm-btn">
-                                    ✔ Accept Friend</button>
-                            </form>
-                            {% elif friend_status == 'friends' %}
-                            <span class="pill">✅ Friends</span>
-                            {% endif %}
-                            <a href="/dm/{{ username }}" class="dm-btn"
-                                >💬 Message</a
-                            >
-                            {% elif user and username == user %}
-                            <a href="/profile" class="dm-btn"
-                                >✏️ Edit Profile</a
-                            >
-                            {% else %}
-                            <a href="/login" class="dm-btn"
-                                >🔐 Login to Message</a
-                            >
-                            {% endif %}
-                            <a href="/users" class="back-btn"
-                                >← Back to Users</a
-                            >
-                        </div>
+ <div class="profile-actions">
+ {% if user and username != user %}
+ {% if friend_status == 'none' %}
+ <form
+ method="POST"
+ action="/friends/request/{{ username }}"
+ >
+ <button type="submit" class="dm-btn">
+ Add Friend</button>
+ </form>
+ {% elif friend_status == 'pending_out' %}
+ <span class="pill">Request sent</span>
+ {% elif friend_status == 'pending_in' %}
+ <form
+ method="POST"
+ action="/friends/request/{{ username }}"
+ >
+ <button type="submit" class="dm-btn">
+ Accept Friend</button>
+ </form>
+ {% elif friend_status == 'friends' %}
+ <span class="pill">Friends</span>
+ {% endif %}
+ <a href="/dm/{{ username }}" class="dm-btn"
+ >Message</a
+ >
+ {% elif user and username == user %}
+ <a href="/profile" class="dm-btn"
+ >Edit Profile</a
+ >
+ {% else %}
+ <a href="/login" class="dm-btn"
+ >Login to Message</a
+ >
+ {% endif %}
+ <a href="/users" class="back-btn"
+ >← Back to Users</a
+ >
+ </div>
 
-                        {% if is_mod and not target_is_mod and username != user
-                        %}
-                        <div class="mod-panel">
-                            <h3>👮 Moderator tools</h3>
-                            <div class="profile-actions">
-                                {% if target_banned %}
-                                <form
-                                    method="POST"
-                                    action="/mod/unban/{{ username }}"
-                                >
-                                    <input
-                                        type="hidden"
-                                        name="next"
-                                        value="/user/{{ username }}"
-                                    />
-                                    <button type="submit" class="mini-btn">
-                                        ♻️ Unban</button>
-                                </form>
-                                {% else %}
-                                <form
-                                    method="POST"
-                                    action="/mod/ban/{{ username }}"
-                                    onsubmit="return confirm('Ban @{{ username }}?')"
-                                >
-                                    <input
-                                        type="hidden"
-                                        name="next"
-                                        value="/user/{{ username }}"
-                                    />
-                                    <button
-                                        type="submit"
-                                        class="mini-btn danger-text"
-                                    >
-                                        🚫 Ban</button>
-                                </form>
-                                {% endif %}
-                                <form
-                                    method="POST"
-                                    action="/mod/delete_user/{{ username }}"
-                                    onsubmit="return confirm('Permanently DELETE @{{ username }}\\'s account? This cannot be undone.')"
-                                >
-                                    <input
-                                        type="hidden"
-                                        name="next"
-                                        value="/users"
-                                    />
-                                    <button
-                                        type="submit"
-                                        class="mini-btn danger-text"
-                                    >
-                                        🗑️ Delete Account</button>
-                                </form>
-                            </div>
-                        </div>
-                        {% endif %}
-                    </div>
-                </div>
-            </main>
-        </div>
+ {% if is_mod and not target_is_mod and username != user
+ %}
+ <div class="mod-panel">
+ <h3>Moderator tools</h3>
+ <div class="profile-actions">
+ {% if target_banned %}
+ <form
+ method="POST"
+ action="/mod/unban/{{ username }}"
+ >
+ <input
+ type="hidden"
+ name="next"
+ value="/user/{{ username }}"
+ />
+ <button type="submit" class="mini-btn">
+ Unban</button>
+ </form>
+ {% else %}
+ <form
+ method="POST"
+ action="/mod/ban/{{ username }}"
+ onsubmit="return confirm('Ban @{{ username }}?')"
+ >
+ <input
+ type="hidden"
+ name="next"
+ value="/user/{{ username }}"
+ />
+ <button
+ type="submit"
+ class="mini-btn danger-text"
+ >
+ Ban</button>
+ </form>
+ {% endif %}
+ <form
+ method="POST"
+ action="/mod/delete_user/{{ username }}"
+ onsubmit="return confirm('Permanently DELETE @{{ username }}\\'s account? This cannot be undone.')"
+ >
+ <input
+ type="hidden"
+ name="next"
+ value="/users"
+ />
+ <button
+ type="submit"
+ class="mini-btn danger-text"
+ >
+ Delete Account</button>
+ </form>
+ </div>
+ </div>
+ {% endif %}
+ </div>
+ </div>
+ </main>
+ </div>
 
-        <div class="mobile-overlay" id="mobileOverlay"></div>
+ <div class="mobile-overlay" id="mobileOverlay"></div>
 
-        <script>
-            window.CURRENT_USER_DATA = {
-                username: "{{ user|default('') }}",
-                display_name: "{{ display_name|default('') }}",
-                avatar: "{{ avatar|default('') }}",
-            };
-        </script>
-        <script src="/static/js/socket.io.min.js?v=1"></script>
-        <script src="/static/js/chat.js?v=13"></script>
-    </body>
+ <script>
+ window.CURRENT_USER_DATA = {
+ username: "{{ user|default('') }}",
+ display_name: "{{ display_name|default('') }}",
+ avatar: "{{ avatar|default('') }}",
+ };
+ </script>
+ <script src="/static/js/socket.io.min.js?v=1"></script>
+ <script src="/static/js/chat.js?v=13"></script>
+ </body>
 </html>

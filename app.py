@@ -1031,7 +1031,7 @@ def dm(username):
         publish_message("dm", key, message)
 
         # Always record; badge only if they are not watching this chat.
-        preview = message.get("text") or "📎 sent an attachment"
+        preview = message.get("text") or "sent an attachment"
         push_notification(
             username,
             "dm",
@@ -1392,7 +1392,7 @@ def group_chat(group_id):
         publish_message("group", group_id, message)
 
         # Always record per member; badge only if they are not watching.
-        preview = message.get("text") or "📎 sent an attachment"
+        preview = message.get("text") or "sent an attachment"
         for member in group.get("members", []):
             if member == current:
                 continue
@@ -1797,7 +1797,7 @@ def forum_reply(thread_id):
             thread["author"],
             "forum",
             current,
-            f"replied in \"{thread['title']}\": {(body or '📎 attachment')[:80]}",
+            f"replied in \"{thread['title']}\": {(body or 'an attachment')[:80]}",
             f"/forum/{thread_id}",
         )
 
@@ -1812,7 +1812,7 @@ def forum_reply(thread_id):
                 "forum",
                 current,
                 f"replied to your post in \"{thread['title']}\": "
-                f"{(body or '📎 attachment')[:60]}",
+                f"{(body or 'an attachment')[:60]}",
                 f"/forum/{thread_id}#reply-{parent_id}",
             )
 
@@ -1969,6 +1969,89 @@ def forum_thread_flag(thread_id):
 
     db.set_thread_flag(thread_id, flag, value)
     return redirect(f"/forum/{thread_id}")
+
+
+# ============================================================
+# GAMES
+#
+# Every subfolder of static/games that contains an index.html is
+# exposed as a playable game. Games are desktop-only: phones and
+# tablets get a friendly notice instead of the game frame.
+# ============================================================
+
+GAMES_FOLDER = os.path.join(BASE_DIR, "static", "games")
+
+_MOBILE_UA_HINTS = (
+    "mobile", "iphone", "ipod", "android", "ipad", "tablet", "kindle",
+)
+
+
+def list_games():
+    """All playable games: static/games/<folder>/index.html."""
+    games = []
+    if os.path.isdir(GAMES_FOLDER):
+        for entry in sorted(os.listdir(GAMES_FOLDER), key=str.lower):
+            full = os.path.join(GAMES_FOLDER, entry)
+            if os.path.isdir(full) and not entry.startswith(".") \
+                    and os.path.exists(os.path.join(full, "index.html")):
+                games.append({
+                    "id": entry,
+                    "name": entry.replace("-", " ").replace("_", " ").strip(),
+                })
+    return games
+
+
+def game_exists(game_id):
+    return any(g["id"] == game_id for g in list_games())
+
+
+def is_desktop_request():
+    ua = request.headers.get("User-Agent", "").lower()
+    return not any(hint in ua for hint in _MOBILE_UA_HINTS)
+
+
+@app.route("/games")
+def games_page():
+    current = session["user"]
+
+    users = db.all_users()
+    user_data = users.get(current) or {}
+
+    return render_template(
+        "games.html",
+        section="games",
+        games=list_games(),
+        user=current,
+        display_name=user_data.get("display_name", current),
+        avatar=user_data.get("avatar"),
+        bio=user_data.get("bio", ""),
+        is_desktop=is_desktop_request(),
+    )
+
+
+@app.route("/games/<game_id>")
+def game_play(game_id):
+    current = session["user"]
+
+    if not game_exists(game_id):
+        abort(404)
+
+    users = db.all_users()
+    user_data = users.get(current) or {}
+
+    return render_template(
+        "game.html",
+        section="games",
+        game={
+            "id": game_id,
+            "name": game_id.replace("-", " ").replace("_", " ").strip(),
+        },
+        user=current,
+        display_name=user_data.get("display_name", current),
+        avatar=user_data.get("avatar"),
+        bio=user_data.get("bio", ""),
+        is_desktop=is_desktop_request(),
+    )
 
 
 # ============================================================

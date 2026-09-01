@@ -1,212 +1,213 @@
 <!doctype html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta
-            name="viewport"
-            content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
-        />
-        <title>Users - bobworld</title>
-        <link
+ <head>
+ <meta charset="UTF-8" />
+ <meta
+ name="viewport"
+ content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+ />
+ <title>Users - bobworld</title>
+ <link
             rel="icon"
-            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>"
+            href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000080'/%3E%3Ctext x='16' y='23' font-family='Tahoma,Arial' font-size='18' font-weight='bold' fill='%23fff' text-anchor='middle'%3EB%3C/text%3E%3C/svg%3E"
         />
-        <link rel="stylesheet" href="/static/css/chat.css?v=11" />
-    </head>
-    <body>
-        <div class="app">
-            <aside class="sidebar" id="sidebar">
-                <div class="sidebar-header">
-                    {% set current_data = users_dict.get(session_user, {}) %}
-                    <div class="user-info-sidebar">
-                        {% if current_data.get('avatar') %}
-                        <img
-                            src="/avatars/{{ current_data.avatar }}"
-                            class="sidebar-avatar"
-                        />
-                        {% else %}
-                        <div class="sidebar-avatar-default">
-                            {{ session_user|first|upper }}
-                        </div>
-                        {% endif %}
-                        <div class="user-text">
-                            <h3>
-                                {{ current_data.get('display_name',
-                                session_user) }}
-                            </h3>
-                            <p class="username">@{{ session_user }}</p>
-                        </div>
-                    </div>
-                    <a href="/profile" class="edit-profile">✏️ Edit Profile</a>
-                </div>
-                <nav class="sidebar-nav">
-                    <a href="/chat" class="nav-item">🌍 Global Chat</a>
-                    <a href="/friends" class="nav-item">
-                        🫂 Friends</a
-                    >
-                    <a href="/users" class="nav-item active">👥 Users</a>
-                    <a href="/groups" class="nav-item">🏡 Groups</a>
-                    <button id="themeToggle" class="nav-item">
-                        🌓 Dark/Light
-                    </button>
-                    <a href="/logout" class="nav-item logout">🚪 Logout</a>
-                </nav>
-                <div class="sidebar-footer">
-                    <p class="bio">
-                        {{ current_data.get('bio', '')|truncate(80, True, '...')
-                        }}
-                    </p>
-                </div>
-            </aside>
+ <link rel="stylesheet" href="/static/css/chat.css?v=11" />
+ </head>
+ <body>
+ <div class="app">
+ <aside class="sidebar" id="sidebar">
+ <div class="sidebar-header">
+ {% set current_data = users_dict.get(session_user, {}) %}
+ <div class="user-info-sidebar">
+ {% if current_data.get('avatar') %}
+ <img
+ src="/avatars/{{ current_data.avatar }}"
+ class="sidebar-avatar"
+ />
+ {% else %}
+ <div class="sidebar-avatar-default">
+ {{ session_user|first|upper }}
+ </div>
+ {% endif %}
+ <div class="user-text">
+ <h3>
+ {{ current_data.get('display_name',
+ session_user) }}
+ </h3>
+ <p class="username">@{{ session_user }}</p>
+ </div>
+ </div>
+ <a href="/profile" class="edit-profile">Edit Profile</a>
+ </div>
+ <nav class="sidebar-nav">
+ <a href="/chat" class="nav-item">Global Chat</a>
+ <a href="/friends" class="nav-item">
+ Friends</a
+ >
+ <a href="/users" class="nav-item active">Users</a>
+ <a href="/groups" class="nav-item">Groups</a>
+ <a href="/games" class="nav-item">Games</a>
+ <button id="themeToggle" class="nav-item">
+ Dark/Light
+ </button>
+ <a href="/logout" class="nav-item logout">Logout</a>
+ </nav>
+ <div class="sidebar-footer">
+ <p class="bio">
+ {{ current_data.get('bio', '')|truncate(80, True, '...')
+ }}
+ </p>
+ </div>
+ </aside>
 
-            <main class="chat-main">
-                <header class="chat-header">
-                    <button class="hamburger" id="hamburgerBtn">☰</button>
-                    <h2>All Users</h2>
-                    <div class="placeholder"></div>
-                </header>
+ <main class="chat-main">
+ <header class="chat-header">
+ <button class="hamburger" id="hamburgerBtn">&#8801;</button>
+ <h2>All Users</h2>
+ <div class="placeholder"></div>
+ </header>
 
-                {% set section = "chat" %}
-                {% include "_topbar.html" %}
+ {% set section = "chat" %}
+ {% include "_topbar.html" %}
 
-                <div class="users-grid">
-                    {% for u in users %}
-                    <div class="user-card" data-username="{{ u.username }}">
-                        <div class="user-avatar">
-                            {% if u.avatar %}
-                            <img
-                                src="/avatars/{{ u.avatar }}"
-                                class="avatar-img"
-                            />
-                            {% else %}
-                            <div class="avatar-default">
-                                {{ u.display_name|first|upper }}
-                            </div>
-                            {% endif %}
-                        </div>
-                        <div class="user-info">
-                            <div class="user-name">
-                                {{ u.display_name }}
-                                {% if u.is_mod %}<span class="mod-badge"
-                                    >👮 MOD</span
-                                >{% endif %}
-                                {% if u.username in banned_set %}
-                                <span class="banned-badge">🚫 BANNED</span>
-                                {% endif %}
-                            </div>
-                            <div class="user-username">@{{ u.username }}</div>
-                            <div class="user-bio">{{ u.bio[:60] }}</div>
-                            <div class="user-actions">
-                                {% if u.friend_status == 'none' %}
-                                <form
-                                    method="POST"
-                                    action="/friends/request/{{ u.username }}"
-                                    data-friend-request
-                                >
-                                    <button type="submit" class="mini-btn">
-                                        ➕ Add Friend
-                                    </button>
-                                </form>
-                                {% elif u.friend_status == 'pending_out' %}
-                                <span class="pill">⏳ Requested</span>
-                                {% elif u.friend_status == 'pending_in' %}
-                                <form
-                                    method="POST"
-                                    action="/friends/request/{{ u.username }}"
-                                    data-friend-request
-                                >
-                                    <button type="submit" class="mini-btn">
-                                        ✔ Accept Friend
-                                    </button>
-                                </form>
-                                {% elif u.friend_status == 'friends' %}
-                                <span class="pill">✅ Friends</span>
-                                {% endif %}
-                                <a
-                                    href="/dm/{{ u.username }}"
-                                    class="dm-btn"
-                                >
-                                    💬 Message</a
-                                >
-                                <a
-                                    href="/user/{{ u.username }}"
-                                    class="view-profile-btn"
-                                    data-username="{{ u.username }}"
-                                >
-                                    👤 Profile</a
-                                >
-                            </div>
-                            {% if is_mod and not u.is_mod %}
-                            <div class="user-actions mod-actions">
-                                {% if u.username in banned_set %}
-                                <form
-                                    method="POST"
-                                    action="/mod/unban/{{ u.username }}"
-                                >
-                                    <input
-                                        type="hidden"
-                                        name="next"
-                                        value="/users"
-                                    />
-                                    <button type="submit" class="mini-btn">
-                                        ♻️ Unban
-                                    </button>
-                                </form>
-                                {% else %}
-                                <form
-                                    method="POST"
-                                    action="/mod/ban/{{ u.username }}"
-                                    onsubmit="return confirm('Ban @{{ u.username }}? They will be logged out and unable to log in.')"
-                                >
-                                    <input
-                                        type="hidden"
-                                        name="next"
-                                        value="/users"
-                                    />
-                                    <button
-                                        type="submit"
-                                        class="mini-btn danger-text"
-                                    >
-                                        🚫 Ban
-                                    </button>
-                                </form>
-                                {% endif %}
-                                <form
-                                    method="POST"
-                                    action="/mod/delete_user/{{ u.username }}"
-                                    onsubmit="return confirm('Permanently DELETE @{{ u.username }}\\'s account, their groups and forum posts? This cannot be undone.')"
-                                >
-                                    <input
-                                        type="hidden"
-                                        name="next"
-                                        value="/users"
-                                    />
-                                    <button
-                                        type="submit"
-                                        class="mini-btn danger-text"
-                                    >
-                                        🗑️ Delete Account
-                                    </button>
-                                </form>
-                            </div>
-                            {% endif %}
-                        </div>
-                    </div>
-                    {% else %}
-                    <div class="no-users">No other users found.</div>
-                    {% endfor %}
-                </div>
-            </main>
-        </div>
-        <div class="mobile-overlay" id="mobileOverlay"></div>
+ <div class="users-grid">
+ {% for u in users %}
+ <div class="user-card" data-username="{{ u.username }}">
+ <div class="user-avatar">
+ {% if u.avatar %}
+ <img
+ src="/avatars/{{ u.avatar }}"
+ class="avatar-img"
+ />
+ {% else %}
+ <div class="avatar-default">
+ {{ u.display_name|first|upper }}
+ </div>
+ {% endif %}
+ </div>
+ <div class="user-info">
+ <div class="user-name">
+ {{ u.display_name }}
+ {% if u.is_mod %}<span class="mod-badge"
+ >MOD</span
+ >{% endif %}
+ {% if u.username in banned_set %}
+ <span class="banned-badge">BANNED</span>
+ {% endif %}
+ </div>
+ <div class="user-username">@{{ u.username }}</div>
+ <div class="user-bio">{{ u.bio[:60] }}</div>
+ <div class="user-actions">
+ {% if u.friend_status == 'none' %}
+ <form
+ method="POST"
+ action="/friends/request/{{ u.username }}"
+ data-friend-request
+ >
+ <button type="submit" class="mini-btn">
+ Add Friend
+ </button>
+ </form>
+ {% elif u.friend_status == 'pending_out' %}
+ <span class="pill">Requested</span>
+ {% elif u.friend_status == 'pending_in' %}
+ <form
+ method="POST"
+ action="/friends/request/{{ u.username }}"
+ data-friend-request
+ >
+ <button type="submit" class="mini-btn">
+ Accept Friend
+ </button>
+ </form>
+ {% elif u.friend_status == 'friends' %}
+ <span class="pill">Friends</span>
+ {% endif %}
+ <a
+ href="/dm/{{ u.username }}"
+ class="dm-btn"
+ >
+ Message</a
+ >
+ <a
+ href="/user/{{ u.username }}"
+ class="view-profile-btn"
+ data-username="{{ u.username }}"
+ >
+ Profile</a
+ >
+ </div>
+ {% if is_mod and not u.is_mod %}
+ <div class="user-actions mod-actions">
+ {% if u.username in banned_set %}
+ <form
+ method="POST"
+ action="/mod/unban/{{ u.username }}"
+ >
+ <input
+ type="hidden"
+ name="next"
+ value="/users"
+ />
+ <button type="submit" class="mini-btn">
+ Unban
+ </button>
+ </form>
+ {% else %}
+ <form
+ method="POST"
+ action="/mod/ban/{{ u.username }}"
+ onsubmit="return confirm('Ban @{{ u.username }}? They will be logged out and unable to log in.')"
+ >
+ <input
+ type="hidden"
+ name="next"
+ value="/users"
+ />
+ <button
+ type="submit"
+ class="mini-btn danger-text"
+ >
+ Ban
+ </button>
+ </form>
+ {% endif %}
+ <form
+ method="POST"
+ action="/mod/delete_user/{{ u.username }}"
+ onsubmit="return confirm('Permanently DELETE @{{ u.username }}\\'s account, their groups and forum posts? This cannot be undone.')"
+ >
+ <input
+ type="hidden"
+ name="next"
+ value="/users"
+ />
+ <button
+ type="submit"
+ class="mini-btn danger-text"
+ >
+ Delete Account
+ </button>
+ </form>
+ </div>
+ {% endif %}
+ </div>
+ </div>
+ {% else %}
+ <div class="no-users">No other users found.</div>
+ {% endfor %}
+ </div>
+ </main>
+ </div>
+ <div class="mobile-overlay" id="mobileOverlay"></div>
 
-        <script>
-            window.CHAT_TYPE = "users";
-            window.session_user = "{{ session_user }}";
-            // Keyed by username, password hashes stripped server-side.
-            window.USERS_DATA = {{ users_dict|tojson }};
-        </script>
-        <script src="/static/js/socket.io.min.js?v=1"></script>
-        <script src="/static/js/chat.js?v=13"></script>
-    </body>
+ <script>
+ window.CHAT_TYPE = "users";
+ window.session_user = "{{ session_user }}";
+ // Keyed by username, password hashes stripped server-side.
+ window.USERS_DATA = {{ users_dict|tojson }};
+ </script>
+ <script src="/static/js/socket.io.min.js?v=1"></script>
+ <script src="/static/js/chat.js?v=13"></script>
+ </body>
 </html>
