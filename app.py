@@ -5,6 +5,7 @@ from flask import (
 from flask_socketio import SocketIO, join_room
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import HTTPException
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
@@ -557,14 +558,12 @@ def csrf_origin_guard():
         session["csrf_token"] = secrets.token_hex(32)
     return None
 
-
 @app.after_request
 def security_headers(response):
-    response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("X-Frame-Options", "DENY")
-    response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "same-origin"
+    response.headers.pop("X-Frame-Options", None)
     return response
-
 
 # ============================================================
 # AUTH MIDDLEWARE
@@ -1971,87 +1970,19 @@ def forum_thread_flag(thread_id):
     return redirect(f"/forum/{thread_id}")
 
 
-# ============================================================
-# GAMES
-#
-# Every subfolder of static/games that contains an index.html is
-# exposed as a playable game. Games are desktop-only: phones and
-# tablets get a friendly notice instead of the game frame.
-# ============================================================
-
-GAMES_FOLDER = os.path.join(BASE_DIR, "static", "games")
-
-_MOBILE_UA_HINTS = (
-    "mobile", "iphone", "ipod", "android", "ipad", "tablet", "kindle",
-)
-
-
-def list_games():
-    """All playable games: static/games/<folder>/index.html."""
-    games = []
-    if os.path.isdir(GAMES_FOLDER):
-        for entry in sorted(os.listdir(GAMES_FOLDER), key=str.lower):
-            full = os.path.join(GAMES_FOLDER, entry)
-            if os.path.isdir(full) and not entry.startswith(".") \
-                    and os.path.exists(os.path.join(full, "index.html")):
-                games.append({
-                    "id": entry,
-                    "name": entry.replace("-", " ").replace("_", " ").strip(),
-                })
-    return games
-
-
-def game_exists(game_id):
-    return any(g["id"] == game_id for g in list_games())
-
-
-def is_desktop_request():
-    ua = request.headers.get("User-Agent", "").lower()
-    return not any(hint in ua for hint in _MOBILE_UA_HINTS)
-
-
-@app.route("/games")
-def games_page():
-    current = session["user"]
-
-    users = db.all_users()
-    user_data = users.get(current) or {}
-
-    return render_template(
-        "games.html",
-        section="games",
-        games=list_games(),
-        user=current,
-        display_name=user_data.get("display_name", current),
-        avatar=user_data.get("avatar"),
-        bio=user_data.get("bio", ""),
-        is_desktop=is_desktop_request(),
-    )
-
-
-@app.route("/games/<game_id>")
-def game_play(game_id):
-    current = session["user"]
-
-    if not game_exists(game_id):
-        abort(404)
-
-    users = db.all_users()
-    user_data = users.get(current) or {}
-
-    return render_template(
-        "game.html",
-        section="games",
-        game={
-            "id": game_id,
-            "name": game_id.replace("-", " ").replace("_", " ").strip(),
-        },
-        user=current,
-        display_name=user_data.get("display_name", current),
-        avatar=user_data.get("avatar"),
-        bio=user_data.get("bio", ""),
-        is_desktop=is_desktop_request(),
-    )
+@app.route("/games/<path:filename>")
+def serve_game(filename):
+    target = os.path.join("games", filename)
+    if os.path.isdir(target):
+        # Redirect to add a trailing slash so the browser resolves
+        # relative URLs (scripts, images) against the game folder,
+        # not against /games/.
+        if not request.path.endswith("/"):
+            return redirect(request.path + "/")
+        return send_from_directory(target, "index.html")
+    if os.path.isfile(target):
+        return send_from_directory("games", filename)
+    abort(404)
 
 
 # ============================================================
@@ -2502,6 +2433,10 @@ def internal_error(error):
 @app.errorhandler(Exception)
 def catch_all(error):
     import traceback as _tb
+    # Re-raise HTTP exceptions (404, 405, 413, etc.) so Flask serves them
+    # as their proper status codes instead of swallowing them as 500s.
+    if isinstance(error, HTTPException):
+        return error
     _log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "server_errors.log")
     with open(_log_file, "a", encoding="utf-8") as f:
         f.write(f"\n{'='*60}\nUncaught Exception: {error}\n")
