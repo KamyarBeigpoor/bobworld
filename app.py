@@ -1579,6 +1579,14 @@ def is_moderator(username):
     return username in MODERATORS
 
 
+def _is_desktop():
+    """Simple check if the request is from a desktop browser."""
+    ua = request.headers.get("User-Agent", "").lower()
+    # Very basic mobile detection - treat as mobile if common mobile tokens present
+    mobile_indicators = ["mobile", "android", "iphone", "ipad", "ipod", "windows phone"]
+    return not any(indicator in ua for indicator in mobile_indicators)
+
+
 @app.template_filter("ts")
 def ts_format(ms):
     """Server-side 'YYYY-MM-DD HH:MM' for forum posts."""
@@ -1968,6 +1976,83 @@ def forum_thread_flag(thread_id):
 
     db.set_thread_flag(thread_id, flag, value)
     return redirect(f"/forum/{thread_id}")
+
+
+@app.route("/games")
+def games_list():
+    """List all available games."""
+
+    current = session["user"]
+
+    games = []
+
+    games_dir = os.path.join(BASE_DIR, "games")
+
+    if os.path.isdir(games_dir):
+        for entry in sorted(os.listdir(games_dir)):
+            game_path = os.path.join(games_dir, entry)
+            if not os.path.isdir(game_path):
+                continue
+            if entry.startswith("."):
+                continue
+            # Each game folder needs an index.html to be playable.
+            if not os.path.isfile(os.path.join(game_path, "index.html")):
+                continue
+            games.append({
+                "id": entry,
+                "name": entry.replace("_", " ").replace("-", " "),
+            })
+
+    users = db.all_users()
+    user_data = users.get(current) or {}
+
+    return render_template(
+        "games.html",
+        games=games,
+        user=current,
+        display_name=user_data.get("display_name", current),
+        avatar=user_data.get("avatar"),
+        bio=user_data.get("bio", ""),
+        is_desktop=_is_desktop(),
+        section="games",
+    )
+
+
+@app.route("/game/<game_id>")
+def game_page(game_id):
+    """Individual game page with embedded iframe."""
+
+    current = session["user"]
+
+    # Prevent path traversal.
+    if "/" in game_id or "\\" in game_id or game_id.startswith("."):
+        abort(404)
+
+    games_dir = os.path.join(BASE_DIR, "games")
+    game_path = os.path.join(games_dir, game_id)
+
+    if not os.path.isdir(game_path):
+        abort(404)
+
+    if not os.path.isfile(os.path.join(game_path, "index.html")):
+        abort(404)
+
+    users = db.all_users()
+    user_data = users.get(current) or {}
+
+    return render_template(
+        "game.html",
+        game={
+            "id": game_id,
+            "name": game_id.replace("_", " ").replace("-", " "),
+        },
+        user=current,
+        display_name=user_data.get("display_name", current),
+        avatar=user_data.get("avatar"),
+        bio=user_data.get("bio", ""),
+        is_desktop=_is_desktop(),
+        section="games",
+    )
 
 
 @app.route("/games/<path:filename>")
