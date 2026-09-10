@@ -68,7 +68,7 @@
                         <h2>Arcade</h2>
                     </div>
 
-                    {% if not is_desktop %}
+                    {% if not is_desktop and not games|selectattr("mobile")|list %}
                     <div class="msg-error desktop-note">
                         Games are desktop-only. Open bobworld on a computer
                         with a keyboard and mouse to play.
@@ -92,7 +92,7 @@
                             </div>
                             <div class="game-info">
                                 <div class="game-name">{{ game.name }}</div>
-                                <div class="game-meta">Desktop only</div>
+                                <div class="game-meta">{{ "Desktop & mobile" if game.mobile else "Desktop only" }}</div>
                             </div>
                             <div class="game-actions">
                                 <a
@@ -105,7 +105,7 @@
                         {% else %}
                         <p class="no-groups">
                             No games installed yet. Drop a game folder with an
-                            index.html into static/games.
+                            index.html into the games folder.
                         </p>
                         {% endfor %}
                     </div>

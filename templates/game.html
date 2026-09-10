@@ -65,7 +65,7 @@
                 {% set section = "games" %}
                 {% include "_topbar.html" %}
 
-                {% if is_desktop %}
+                {% if is_desktop or game.mobile %}
                 <div class="game-frame-wrap">
                     <iframe
                         class="game-frame"

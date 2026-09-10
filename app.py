@@ -1978,6 +1978,11 @@ def forum_thread_flag(thread_id):
     return redirect(f"/forum/{thread_id}")
 
 
+# Games playable on phones/tablets (touch controls); all others are
+# keyboard/mouse only and stay behind the desktop gate.
+MOBILE_GAMES = {"Tetris"}
+
+
 @app.route("/games")
 def games_list():
     """List all available games."""
@@ -2001,6 +2006,7 @@ def games_list():
             games.append({
                 "id": entry,
                 "name": entry.replace("_", " ").replace("-", " "),
+                "mobile": entry in MOBILE_GAMES,
             })
 
     users = db.all_users()
@@ -2045,6 +2051,7 @@ def game_page(game_id):
         game={
             "id": game_id,
             "name": game_id.replace("_", " ").replace("-", " "),
+            "mobile": game_id in MOBILE_GAMES,
         },
         user=current,
         display_name=user_data.get("display_name", current),
