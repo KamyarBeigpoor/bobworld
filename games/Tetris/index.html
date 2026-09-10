@@ -39,13 +39,22 @@
     .panel .val { font-weight: bold; font-size: 15px; }
     .pad {
         display: none;
-        grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px;
+        grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 8px;
+        max-width: 200px;
     }
+    .pad button[data-a="left"] { grid-column: 1; grid-row: 1; }
+    .pad button[data-a="rot"] { grid-column: 1; grid-row: 2; }
+    .pad button[data-a="right"] { grid-column: 2; grid-row: 1; }
+    .pad button[data-a="down"] { grid-column: 2; grid-row: 2; }
+    .pad button[data-a="drop"] { grid-column: 1; grid-row: 3; }
+    .pad button[data-a="pause"] { grid-column: 2; grid-row: 3; }
     .pad button {
-        font-family: inherit; font-size: 20px; font-weight: bold; padding: 14px 0;
+        font-family: inherit; font-size: 18px; font-weight: bold; padding: 16px 0;
         cursor: pointer; color: var(--ink);
         border: 3px solid; border-color: var(--hilite) var(--mid) var(--mid) var(--hilite);
         background: var(--face);
+        min-height: 52px;
+        font-size: 20px;
     }
     .pad button:active { border-color: var(--mid) var(--hilite) var(--hilite) var(--mid); }
     .pad .spacer { visibility: hidden; }
@@ -73,7 +82,7 @@
     <div class="titlebar"><span>Tetris</span><span id="state">Ready</span></div>
     <div class="layout">
         <div class="boardwrap">
-            <canvas id="board" width="240" height="400"></canvas>
+            <canvas id="board" width="200" height="400"></canvas>
             <div class="overlay" id="overlay">
                 <span id="ovmsg">Tetris</span>
                 <div class="btnrow" style="width:140px"><button id="startBtn">Start</button></div>
