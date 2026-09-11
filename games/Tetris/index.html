@@ -26,12 +26,22 @@
     }
     .titlebar {
         background: var(--titlebar); color: #fff; font-weight: bold;
-        font-size: 13px; padding: 5px 10px; display: flex; justify-content: space-between;
+        font-size: 13px; padding: 5px 10px; display: flex; justify-content: space-between; align-items: center;
     }
+    .title-controls { display: flex; align-items: center; gap: 6px; }
+    .icon-btn {
+        width: 18px; height: 16px; padding: 0; cursor: pointer;
+        background: var(--face); color: var(--ink);
+        border: 2px solid; border-color: var(--hilite) var(--mid) var(--mid) var(--hilite);
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+    }
+    .icon-btn svg { width: 11px; height: 11px; display: block; pointer-events: none; }
+    .icon-btn:active { border-color: var(--mid) var(--hilite) var(--hilite) var(--mid); }
     .layout { display: flex; gap: 8px; align-items: stretch; }
     canvas { display: block; background: #000; }
     #board { border: 3px solid; border-color: var(--mid) var(--hilite) var(--hilite) var(--mid); }
-    .side { display: flex; flex-direction: column; gap: 8px; width: 110px; }
+    .side { display: flex; flex-direction: column; justify-content: space-between; gap: 8px; width: 110px; }
     .panel { padding: 6px; font-size: 12px; }
     .panel h4 {
         font-size: 11px; margin-bottom: 4px; color: #000080;
@@ -39,8 +49,7 @@
     .panel .val { font-weight: bold; font-size: 15px; }
     .pad {
         display: none;
-        grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 8px;
-        max-width: 200px;
+        grid-template-columns: repeat(2, 1fr); gap: 7px; margin-top: 8px;
     }
     .pad button[data-a="left"] { grid-column: 1; grid-row: 1; }
     .pad button[data-a="rot"] { grid-column: 1; grid-row: 2; }
@@ -49,15 +58,21 @@
     .pad button[data-a="drop"] { grid-column: 1; grid-row: 3; }
     .pad button[data-a="pause"] { grid-column: 2; grid-row: 3; }
     .pad button {
-        font-family: inherit; font-size: 18px; font-weight: bold; padding: 16px 0;
+        font-family: inherit; font-weight: bold;
         cursor: pointer; color: var(--ink);
         border: 3px solid; border-color: var(--hilite) var(--mid) var(--mid) var(--hilite);
         background: var(--face);
-        min-height: 52px;
-        font-size: 20px;
+        min-height: 58px;
+        display: flex; align-items: center; justify-content: center;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
     }
-    .pad button:active { border-color: var(--mid) var(--hilite) var(--hilite) var(--mid); }
-    .pad .spacer { visibility: hidden; }
+    .pad button svg { width: 26px; height: 26px; display: block; pointer-events: none; }
+    .pad button:active {
+        border-color: var(--mid) var(--hilite) var(--hilite) var(--mid);
+        background: #b6b6b6;
+    }
+    .pad button:active svg { transform: translate(1px, 1px); }
     .btnrow { display: flex; gap: 8px; }
     .btnrow button {
         flex: 1; font-family: inherit; font-size: 12px; padding: 5px 0; cursor: pointer;
@@ -79,7 +94,20 @@
 </head>
 <body>
 <div class="app bevel-out">
-    <div class="titlebar"><span>Tetris</span><span id="state">Ready</span></div>
+    <div class="titlebar">
+        <span>Tetris</span>
+        <div class="title-controls">
+            <button id="muteBtn" class="icon-btn" aria-label="Mute sound">
+                <svg id="muteIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 10v4h4l5 4V6L7 10H3z" fill="currentColor" stroke="none"/>
+                    <path id="wave1" d="M16 9a5 5 0 0 1 0 6"/>
+                    <path id="wave2" d="M18.5 6.5a9 9 0 0 1 0 11"/>
+                    <path id="muteX" d="M16 9 L21 15 M21 9 L16 15" style="display:none"/>
+                </svg>
+            </button>
+            <span id="state">Ready</span>
+        </div>
+    </div>
     <div class="layout">
         <div class="boardwrap">
             <canvas id="board" width="200" height="400"></canvas>
@@ -96,12 +124,24 @@
         </div>
     </div>
     <div class="pad" id="pad">
-        <button data-a="left">&#9664;</button>
-        <button data-a="rot">&#8635;</button>
-        <button data-a="right">&#9654;</button>
-        <button data-a="down">&#9660;</button>
-        <button data-a="drop">&#9661;</button>
-        <button data-a="pause">II</button>
+        <button data-a="left" aria-label="Move left">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M15 4 L7 12 L15 20" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button data-a="rot" aria-label="Rotate">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 12a7 7 0 1 1 2.05 4.95" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="M4 17.5v-5.3h5.3" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button data-a="right" aria-label="Move right">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M9 4 L17 12 L9 20" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button data-a="down" aria-label="Soft drop">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 9 L12 16 L19 9" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button data-a="drop" aria-label="Hard drop">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 5 L12 11 L19 5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13 L12 19 L19 13" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button data-a="pause" aria-label="Pause">
+            <svg viewBox="0 0 24 24"><rect x="5" y="4" width="5" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="5" height="16" rx="1" fill="currentColor"/></svg>
+        </button>
     </div>
 </div>
 <script>
@@ -115,7 +155,117 @@ const SHAPES = {
     T: [[0,1,0],[1,1,1],[0,0,0]], Z: [[1,1,0],[0,1,1],[0,0,0]]
 };
 const COLORS = { I:"#00e5e5", J:"#2222dd", L:"#e08000", O:"#dddd00", S:"#00cc00", T:"#aa00dd", Z:"#dd2222" };
-let grid, cur, nxt, score, lines, level, dropAt, over, paused, raf;
+
+// ---------- Audio: synthesized SFX + an original chiptune loop (Web Audio API, no external files) ----------
+let audioCtx = null, masterGain, sfxGain, musicGain;
+let muted = false;
+try { muted = localStorage.getItem("tetrisMuted") === "1"; } catch (e) {}
+
+function initAudio() {
+    if (audioCtx) return;
+    try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        masterGain = audioCtx.createGain(); masterGain.gain.value = muted ? 0 : 1;
+        const tone = audioCtx.createBiquadFilter(); tone.type = "lowpass"; tone.frequency.value = 2600; tone.Q.value = 0.5;
+        masterGain.connect(tone); tone.connect(audioCtx.destination);
+        sfxGain = audioCtx.createGain(); sfxGain.gain.value = 1; sfxGain.connect(masterGain);
+        musicGain = audioCtx.createGain(); musicGain.gain.value = 1; musicGain.connect(masterGain);
+    } catch (e) { audioCtx = null; }
+}
+function setMuted(v) {
+    muted = v;
+    if (masterGain) masterGain.gain.value = muted ? 0 : 1;
+    try { localStorage.setItem("tetrisMuted", muted ? "1" : "0"); } catch (e) {}
+    document.getElementById("wave1").style.display = muted ? "none" : "";
+    document.getElementById("wave2").style.display = muted ? "none" : "";
+    document.getElementById("muteX").style.display = muted ? "" : "none";
+}
+function beep({ freq, dur = 0.09, type = "square", gain = 0.22, slideTo = null, when = 0 }) {
+    if (!audioCtx) return;
+    const t0 = audioCtx.currentTime + when;
+    const osc = audioCtx.createOscillator(), g = audioCtx.createGain();
+    osc.type = type; osc.frequency.setValueAtTime(freq, t0);
+    if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+    g.gain.setValueAtTime(gain, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g); g.connect(sfxGain);
+    osc.start(t0); osc.stop(t0 + dur + 0.02);
+}
+function sfxMove() { beep({ freq: 220, dur: 0.045, type: "triangle", gain: 0.1 }); }
+function sfxRotate() { beep({ freq: 349, dur: 0.06, type: "triangle", gain: 0.12 }); }
+function sfxLand() { beep({ freq: 130, dur: 0.06, type: "triangle", gain: 0.14, slideTo: 60 }); }
+function sfxDrop() { beep({ freq: 200, dur: 0.11, type: "triangle", gain: 0.16, slideTo: 50 }); }
+function sfxLineClear(n) {
+    (n >= 4 ? [523, 659, 784, 1046] : [523, 659, 784, 988].slice(0, n)).forEach((f, i) => beep({ freq: f, dur: 0.1, type: "triangle", gain: 0.18, when: i * 0.06 }));
+}
+function sfxLevelUp() { [523, 659, 784].forEach((f, i) => beep({ freq: f, dur: 0.11, type: "triangle", gain: 0.16, when: i * 0.09 })); }
+function sfxGameOver() { [392, 349, 294, 196].forEach((f, i) => beep({ freq: f, dur: 0.2, type: "triangle", gain: 0.16, when: i * 0.16 })); }
+function sfxPause() { beep({ freq: 440, dur: 0.05, type: "sine", gain: 0.12 }); }
+
+// Traditional "Korobeiniki" folk melody (the public-domain Russian folk tune the classic
+// Tetris theme is based on) — rendered here as an original chiptune-style arrangement.
+// Each entry is [frequencyInHz (0 = rest), durationInEighthNotes].
+const MUSIC_MELODY = [
+    [659.25, 2], [493.88, 1], [523.25, 1], [587.33, 2], [523.25, 1], [493.88, 1],
+    [440.00, 2], [440.00, 1], [523.25, 1], [659.25, 2], [587.33, 1], [523.25, 1],
+    [493.88, 3], [523.25, 1], [587.33, 2],
+    [659.25, 2], [523.25, 2], [440.00, 2], [440.00, 2], [0, 2],
+    [587.33, 3], [698.46, 1], [880.00, 2],
+    [783.99, 1], [698.46, 1], [659.25, 3], [523.25, 1],
+    [659.25, 2], [587.33, 1], [523.25, 1], [493.88, 2], [493.88, 1], [523.25, 1],
+    [587.33, 2], [659.25, 2],
+    [523.25, 2], [440.00, 2], [440.00, 2], [0, 2]
+];
+const MUSIC_BASS = [
+    [110.00, 8], [98.00, 8], [87.31, 8], [82.41, 8],
+    [73.42, 8], [65.41, 8], [110.00, 8], [82.41, 8]
+];
+let musicOn = false, melIdx = 0, melTime = 0, bassIdx = 0, bassTime = 0, musicSchedTimer = null;
+function bpmForLevel() { return Math.min(200, 128 + ((typeof level === "number" ? level : 1) - 1) * 4); }
+function scheduleNote(freq, t0, durSec, type, gainNode, peakGain) {
+    if (!freq) return;
+    const osc = audioCtx.createOscillator(), g = audioCtx.createGain();
+    osc.type = type; osc.frequency.setValueAtTime(freq, t0);
+    const attack = 0.01, release = Math.min(0.05, durSec * 0.3);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(peakGain, t0 + attack);
+    g.gain.setValueAtTime(peakGain, Math.max(t0 + attack, t0 + durSec - release));
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + durSec);
+    osc.connect(g); g.connect(gainNode);
+    osc.start(t0); osc.stop(t0 + durSec + 0.02);
+}
+function musicScheduler() {
+    if (!audioCtx) return;
+    const lookahead = audioCtx.currentTime + 0.15;
+    const eighthSec = () => 60 / bpmForLevel() / 2;
+    while (melTime < lookahead) {
+        const [freq, eighths] = MUSIC_MELODY[melIdx % MUSIC_MELODY.length];
+        const dur = eighths * eighthSec();
+        scheduleNote(freq, melTime, dur * 0.92, "triangle", musicGain, 0.09);
+        melTime += dur; melIdx++;
+    }
+    while (bassTime < lookahead) {
+        const [freq, eighths] = MUSIC_BASS[bassIdx % MUSIC_BASS.length];
+        const dur = eighths * eighthSec();
+        scheduleNote(freq, bassTime, dur * 0.95, "triangle", musicGain, 0.07);
+        bassTime += dur; bassIdx++;
+    }
+}
+function startMusic() {
+    if (!audioCtx || musicOn) return;
+    musicOn = true;
+    melIdx = 0; bassIdx = 0;
+    melTime = bassTime = audioCtx.currentTime + 0.05;
+    musicSchedTimer = setInterval(musicScheduler, 50);
+}
+function stopMusic() {
+    musicOn = false;
+    if (musicSchedTimer) clearInterval(musicSchedTimer);
+    musicSchedTimer = null;
+}
+// -------------------------------------------------------------------------------------------------------
+let grid, cur, nxt, score, lines, level, dropAt, over, paused, raf, clearing;
+const CLEAR_DURATION = 320, CLEAR_FLASH_MS = 70;
 
 const bag = [];
 function randPiece() {
@@ -139,24 +289,37 @@ function tryMove(dx, dy) {
 function tryRotate() {
     const m = rotate(cur.m);
     for (const k of [0, -1, 1, -2, 2]) {
-        if (!collide(m, cur.x + k, cur.y)) { cur.m = m; cur.x += k; return; }
+        if (!collide(m, cur.x + k, cur.y)) { cur.m = m; cur.x += k; return true; }
     }
+    return false;
 }
 function lock() {
     cur.m.forEach((r, y) => r.forEach((v, x) => {
         if (v && cur.y + y >= 0) grid[cur.y + y][cur.x + x] = cur.t;
     }));
-    let n = 0;
-    grid = grid.filter(row => { if (row.every(Boolean)) { n++; return false; } return true; });
-    while (grid.length < R) grid.unshift(Array(C).fill(0));
-    if (n) {
-        score += [0, 100, 300, 500, 800][n] * level;
-        lines += n;
-        level = 1 + (lines / 10 | 0);
-        document.getElementById("score").textContent = score;
-        document.getElementById("lines").textContent = lines;
-        document.getElementById("level").textContent = level;
+    const full = [];
+    grid.forEach((row, y) => { if (row.every(Boolean)) full.push(y); });
+    if (full.length) {
+        cur = null; // hide the falling piece while the cleared rows flash
+        clearing = { rows: full, start: performance.now() };
+        sfxLineClear(full.length);
+    } else {
+        spawn();
     }
+}
+function finishClear() {
+    const n = clearing.rows.length;
+    const prevLevel = level;
+    grid = grid.filter((_, y) => !clearing.rows.includes(y));
+    while (grid.length < R) grid.unshift(Array(C).fill(0));
+    score += [0, 100, 300, 500, 800][n] * level;
+    lines += n;
+    level = 1 + (lines / 10 | 0);
+    document.getElementById("score").textContent = score;
+    document.getElementById("lines").textContent = lines;
+    document.getElementById("level").textContent = level;
+    if (level > prevLevel) sfxLevelUp();
+    clearing = null;
     spawn();
 }
 function spawn() {
@@ -166,6 +329,8 @@ function spawn() {
 }
 function gameOver() {
     over = true;
+    stopMusic();
+    sfxGameOver();
     document.getElementById("state").textContent = "Game Over";
     document.getElementById("ovmsg").textContent = "Game Over — Score " + score;
     document.getElementById("overlay").classList.remove("hidden");
@@ -178,8 +343,15 @@ function cell(c, color, g, x, y, size) {
 }
 function draw() {
     ctx.fillStyle = "#000"; ctx.fillRect(0, 0, board.width, board.height);
-    for (let y = 0; y < R; y++) for (let x = 0; x < C; x++)
-        if (grid[y][x]) cell(0, COLORS[grid[y][x]], ctx, x * S, y * S, S);
+    const flashOn = clearing && Math.floor((performance.now() - clearing.start) / CLEAR_FLASH_MS) % 2 === 0;
+    for (let y = 0; y < R; y++) {
+        if (clearing && clearing.rows.includes(y)) {
+            if (flashOn) { ctx.fillStyle = "#fff"; ctx.fillRect(0, y * S, C * S, S); }
+            continue;
+        }
+        for (let x = 0; x < C; x++)
+            if (grid[y][x]) cell(0, COLORS[grid[y][x]], ctx, x * S, y * S, S);
+    }
     if (cur && !over) {
         let gy = cur.y; while (!collide(cur.m, cur.x, gy + 1)) gy++;   // ghost
         cur.m.forEach((r, y) => r.forEach((v, x) => {
@@ -202,40 +374,60 @@ function drawNext() {
 function loop(t) {
     raf = requestAnimationFrame(loop);
     if (over || paused) return;
+    if (clearing) {
+        if (t - clearing.start >= CLEAR_DURATION) finishClear();
+        draw();
+        return;
+    }
     if (t >= dropAt) {
         dropAt = t + Math.max(120, 800 - (level - 1) * 70);
-        if (!tryMove(0, 1)) lock();
+        if (!tryMove(0, 1)) { sfxLand(); lock(); }
     }
     draw();
 }
 function act(a) {
-    if (over || paused && a !== "pause") return;
-    if (a === "left") tryMove(-1, 0);
-    else if (a === "right") tryMove(1, 0);
+    if (over || clearing || (paused && a !== "pause")) return;
+    if (a === "left") { if (tryMove(-1, 0)) sfxMove(); }
+    else if (a === "right") { if (tryMove(1, 0)) sfxMove(); }
     else if (a === "down") { if (tryMove(0, 1)) score++; document.getElementById("score").textContent = score; }
-    else if (a === "rot") tryRotate();
-    else if (a === "drop") { while (tryMove(0, 1)); lock(); }
+    else if (a === "rot") { if (tryRotate()) sfxRotate(); }
+    else if (a === "drop") {
+        let n = 0;
+        while (tryMove(0, 1)) n++;
+        score += n * 2;
+        document.getElementById("score").textContent = score;
+        sfxDrop(); lock();
+    }
     else if (a === "pause") togglePause();
 }
 function togglePause() {
     if (over) return;
     paused = !paused;
+    sfxPause();
+    if (paused) stopMusic(); else startMusic();
     document.getElementById("state").textContent = paused ? "Paused" : "Playing";
     document.getElementById("ovmsg").textContent = "Paused";
     document.getElementById("overlay").classList.toggle("hidden", !paused);
     document.getElementById("startBtn").textContent = "Resume";
 }
 function start() {
+    initAudio();
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
     grid = Array.from({ length: R }, () => Array(C).fill(0));
-    score = 0; lines = 0; level = 1; nxt = null; over = paused = false;
-    ["score", "lines", "level"].forEach(id => document.getElementById(id).textContent = "0");
+    score = 0; lines = 0; level = 1; nxt = null; over = paused = false; clearing = null;
+    document.getElementById("score").textContent = "0";
+    document.getElementById("lines").textContent = "0";
+    document.getElementById("level").textContent = "1";
     document.getElementById("state").textContent = "Playing";
     document.getElementById("startBtn").textContent = "Resume";
     document.getElementById("overlay").classList.add("hidden");
     spawn(); dropAt = performance.now();
     cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
+    startMusic();
 }
 document.getElementById("startBtn").addEventListener("click", () => (over || !grid) ? start() : togglePause());
+document.getElementById("muteBtn").addEventListener("click", () => { initAudio(); setMuted(!muted); });
+setMuted(muted);
 document.getElementById("pad").addEventListener("click", e => {
     const a = e.target.dataset && e.target.dataset.a; if (a) act(a);
 });
