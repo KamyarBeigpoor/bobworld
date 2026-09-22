@@ -1070,6 +1070,21 @@ def dm(username):
     )
 
 
+@app.route("/dm-conversations")
+def dm_conversations_page():
+
+    me = session["user"]
+
+    conversations = db.get_dm_conversations(me)
+
+    return render_template(
+        "dm_conversations.html",
+        user=me,
+        conversations=conversations,
+        section="dm",
+    )
+
+
 def dm_key(a, b):
     return "__".join(sorted((a, b)))
 

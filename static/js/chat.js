@@ -1181,24 +1181,23 @@
  document.title.replace(/^\(\d+\+\?\)\s*/, "");
  }
 
- function notifItemHtml(n) {
- const labels = {
-      friend_request: "Friend request",
-      friend_accepted: "Friend",
-      dm: "Message",
-      group: "Group",
-    };
-    const label = labels[n.ntype] || "Notice";
- const icon = icons[n.ntype] || "";
- const when = n.timestamp ? formatTime(n.timestamp) : "";
- const cls = n.read ? "notif-item" : "notif-item unread";
- return (
- `<button type="button" class="${cls}" data-id="${n.id}" data-link="${escapeAttr(
- n.link,
- )}">` +
- `${label}: ${escapeHtml(n.text)} <span class="time">${when}</span></button>`
- );
- }
+function notifItemHtml(n) {
+  const labels = {
+    friend_request: "Friend request",
+    friend_accepted: "Friend",
+    dm: "Message",
+    group: "Group",
+  };
+  const label = labels[n.ntype] || "Notice";
+  const when = n.timestamp ? formatTime(n.timestamp) : "";
+  const cls = n.read ? "notif-item" : "notif-item unread";
+  return (
+    `<button type="button" class="${cls}" data-id="${n.id}" data-link="${escapeAttr(
+    n.link,
+    )}">` +
+    `${label}: ${escapeHtml(n.text)} <span class="time">${when}</span></button>`
+  );
+}
 
  function escapeAttr(s) {
  return String(s || "").replace(/"/g, "&quot;");
@@ -1322,21 +1321,32 @@
  })
  .catch(() => {});
 
- bell.addEventListener("click", () => {
- const panel = $("notifPanel");
- panel.hidden = !panel.hidden;
- if (!panel.hidden && unreadNotifs > 0) {
- fetch("/notifications/read", { method: "POST" })
- .then(() => {
- unreadNotifs = 0;
- updateNotifBadge();
- document
- .querySelectorAll(".notif-item.unread")
- .forEach((el) => el.classList.remove("unread"));
- })
- .catch(() => {});
- }
- });
+bell.addEventListener("click", () => {
+  const panel = $("notifPanel");
+  const wasHidden = panel.hidden;
+  panel.hidden = !panel.hidden;
+  if (!panel.hidden) {
+    // Panel is being shown - refresh notifications
+    fetch("/notifications")
+    .then((r) => r.json())
+    .then((data) => {
+      unreadNotifs = data.unread || 0;
+      updateNotifBadge();
+      renderNotifList(data.items || []);
+    })
+    .catch(() => {});
+    // Mark all as read
+    fetch("/notifications/read", { method: "POST" })
+    .then(() => {
+      unreadNotifs = 0;
+      updateNotifBadge();
+      document
+      .querySelectorAll(".notif-item.unread")
+      .forEach((el) => el.classList.remove("unread"));
+    })
+    .catch(() => {});
+  }
+});
 
  const clearBtn = $("notifClear");
  if (clearBtn) {
