@@ -1192,7 +1192,7 @@ function notifItemHtml(n) {
   const when = n.timestamp ? formatTime(n.timestamp) : "";
   const cls = n.read ? "notif-item" : "notif-item unread";
   return (
-    `<button type="button" class="${cls}" data-id="${n.id}" data-link="${escapeAttr(
+    `<button type="button" class="${cls}" data-id="${n.nid}" data-link="${escapeAttr(
     n.link,
     )}">` +
     `${label}: ${escapeHtml(n.text)} <span class="time">${when}</span></button>`
