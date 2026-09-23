@@ -1833,32 +1833,63 @@ class Database:
                 "DELETE FROM notifications WHERE username = ?", (username,)
             )
 
-    def get_dm_conversations(self, username):
-        with self._lock:
-            rows = self.backend.query(
-                "SELECT DISTINCT chat_id FROM messages "
-                "WHERE chat_type = 'dm' AND (sender = ? OR chat_id LIKE '%' || ? || '%')",
-                (username, username),
-            )
-        partners = {}
-        for row in rows:
-            parts = row["chat_id"].split("__")
-            if len(parts) == 2:
-                other = parts[0] if parts[1] == username else parts[1]
-                if other != username and other not in partners:
-                    partners[other] = True
-        usernames = list(partners.keys())
-        if not usernames:
-            return []
-        placeholders = ",".join("?" for _ in usernames)
-        user_rows = self.backend.query(
-            f"SELECT username, display_name, avatar FROM users WHERE username IN ({placeholders})",
-            usernames,
+def get_dm_conversations(self, username):
+    with self._lock:
+        rows = self.backend.query(
+            "SELECT DISTINCT chat_id FROM messages "
+            "WHERE chat_type = 'dm' AND (sender = ? OR chat_id LIKE '%' || ? || '%')",
+            (username, username),
         )
-        return [
-            {"username": r["username"], "display_name": r.get("display_name", r["username"]), "avatar": r.get("avatar")}
-            for r in user_rows
-        ]
+
+    partners = {}
+
+    for row in rows:
+        chat_id = row.get("chat_id")
+
+        # Ignore old/broken DM rows
+        if not chat_id or not isinstance(chat_id, str):
+            continue
+
+        parts = chat_id.split("__")
+
+        # Ignore malformed/legacy chat IDs
+        if len(parts) != 2:
+            continue
+
+        if parts[0] == username:
+            other = parts[1]
+        elif parts[1] == username:
+            other = parts[0]
+        else:
+            continue
+
+        if other and other != username:
+            partners[other] = True
+
+    usernames = list(partners.keys())
+
+    if not usernames:
+        return []
+
+    placeholders = ",".join("?" for _ in usernames)
+
+    user_rows = self.backend.query(
+        f"""
+        SELECT username, display_name, avatar
+        FROM users
+        WHERE username IN ({placeholders})
+        """,
+        usernames,
+    )
+
+    return [
+        {
+            "username": r["username"],
+            "display_name": r.get("display_name") or r["username"],
+            "avatar": r.get("avatar"),
+        }
+        for r in user_rows
+    ]
 
     # ------------------------------------------------------------------
     # ACCOUNT ADMIN
